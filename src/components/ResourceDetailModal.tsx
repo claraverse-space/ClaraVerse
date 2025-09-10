@@ -15,6 +15,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { CommunityResource, CommunityService, LocalUserManager, ResourceComment } from '../services/communityService';
+import { CustomNodeDefinition } from '../types/agent/types';
 
 interface ResourceDetailModalProps {
   resource: CommunityResource | null;
@@ -80,7 +81,112 @@ const ResourceDetailModal: React.FC<ResourceDetailModalProps> = ({
       await CommunityService.incrementDownloads(resource.id);
       
       // Handle different content types
-      if (resource.content_type === 'image/base64' && resource.content) {
+      if (resource.category === 'custom-node' && resource.content) {
+        // Add custom node to the user's local custom nodes
+        try {
+          // Parse the custom node implementation
+          const customNodeCode = resource.content;
+          
+          let originalNodeDefinition = null;
+          let executionCode = customNodeCode;
+          let inputs: any[] = [];
+          let outputs: any[] = [];
+          let properties: any[] = [];
+          
+          // Try to parse the content as a complete CustomNodeDefinition JSON
+          try {
+            originalNodeDefinition = JSON.parse(customNodeCode);
+            console.log('Parsed original node definition:', originalNodeDefinition);
+            
+            if (originalNodeDefinition.executionCode) {
+              executionCode = originalNodeDefinition.executionCode;
+            }
+            if (originalNodeDefinition.inputs) {
+              inputs = originalNodeDefinition.inputs;
+            }
+            if (originalNodeDefinition.outputs) {
+              outputs = originalNodeDefinition.outputs;
+            }
+            if (originalNodeDefinition.properties) {
+              properties = originalNodeDefinition.properties;
+            }
+          } catch (parseError) {
+            console.log('Content is not JSON, treating as raw execution code');
+            // If parsing fails, treat it as raw execution code
+            executionCode = customNodeCode;
+          }
+          
+          // Create a new custom node object based on the shared resource
+          const newCustomNode: CustomNodeDefinition = {
+            id: `imported-${resource.id}`,
+            type: resource.title.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+            name: resource.title,
+            description: resource.description,
+            category: 'imported',
+            inputs: inputs,
+            outputs: outputs,
+            properties: properties,
+            executionCode: executionCode,
+            version: resource.version || '1.0.0',
+            executionHandler: 'custom-node-handler',
+            icon: '📦', // Default icon for imported nodes
+            author: resource.author_username,
+            uiConfig: {
+              backgroundColor: '#8B5CF6', // Purple for imported nodes
+              iconUrl: undefined,
+              customStyling: ''
+            },
+            customMetadata: {
+              isUserCreated: true as const,
+              createdBy: resource.author_username,
+              createdAt: new Date().toISOString(),
+              published: false,
+              downloadCount: resource.downloads_count || 0,
+              rating: resource.likes_count || 0,
+              sharedWith: [],
+            },
+            metadata: {
+              tags: ['imported', 'community'],
+              documentation: '',
+              examples: []
+            }
+          };
+          
+          // Use the CustomNodeManager to properly register the node
+          // Import the customNodeManager
+          const { customNodeManager } = await import('./AgentBuilder/NodeCreator/CustomNodeManager');
+          
+          // Check if this custom node already exists
+          const existingNode = customNodeManager.getCustomNode(newCustomNode.type);
+          
+          if (existingNode) {
+            // Node with same type exists - create unique type
+            newCustomNode.type = `${newCustomNode.type}-${resource.id}`;
+            customNodeManager.registerCustomNode(newCustomNode);
+          } else {
+            // Add new node
+            customNodeManager.registerCustomNode(newCustomNode);
+          }
+          
+          // Trigger custom nodes sync if available
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('customNodesUpdated'));
+          }
+          
+        } catch (parseError) {
+          console.error('Error adding custom node:', parseError);
+          // Fall back to downloading as text file
+          const blob = new Blob([resource.content], { type: 'text/javascript' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${resource.title}.js`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+      } else if (resource.content_type === 'image/base64' && resource.content) {
         // Download image
         const link = document.createElement('a');
         link.href = resource.content;

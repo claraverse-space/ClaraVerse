@@ -189,6 +189,30 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
     syncCustomNodes();
   }, [syncCustomNodes]);
 
+  // Listen for custom nodes updates from community downloads
+  useEffect(() => {
+    const handleCustomNodesUpdate = () => {
+      console.log('AgentStudio: Received customNodesUpdated event');
+      // Reload custom nodes from storage
+      console.log('AgentStudio: Reloading custom nodes from storage...');
+      customNodeManager.reloadFromStorage();
+      console.log('AgentStudio: Getting updated custom nodes list...');
+      const updatedNodes = customNodeManager.getCustomNodes();
+      console.log('AgentStudio: Updated custom nodes:', updatedNodes);
+      setCustomNodes(updatedNodes);
+      syncCustomNodes();
+      console.log('AgentStudio: Custom nodes sync completed');
+    };
+
+    console.log('AgentStudio: Adding event listener for customNodesUpdated');
+    window.addEventListener('customNodesUpdated', handleCustomNodesUpdate);
+    
+    return () => {
+      console.log('AgentStudio: Removing event listener for customNodesUpdated');
+      window.removeEventListener('customNodesUpdated', handleCustomNodesUpdate);
+    };
+  }, [syncCustomNodes]);
+
   // Load wallpaper from database
   useEffect(() => {
     const loadWallpaper = async () => {

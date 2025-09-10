@@ -35,7 +35,8 @@ export interface CustomNode {
   inputs: any[];
   outputs: any[];
   properties: any[];
-  implementation: string;
+  implementation?: string; // Legacy field
+  executionCode?: string; // New field
   version: string;
   author: string;
   createdAt: string;
@@ -58,23 +59,6 @@ class LocalContentDetectionService {
       const customNodes = await this.getCustomNodes();
       content.push(...customNodes);
 
-      // 2. Get Generated Images
-      const images = await this.getGeneratedImages();
-      content.push(...images);
-
-      // TODO: Add back when ready
-      // 3. Get Saved Prompts
-      // const prompts = await this.getSavedPrompts();
-      // content.push(...prompts);
-
-      // 4. Get Wallpapers
-      // const wallpapers = await this.getWallpapers();
-      // content.push(...wallpapers);
-
-      // 5. Get Workflows
-      // const workflows = await this.getWorkflows();
-      // content.push(...workflows);
-
       // Sort by last modified (newest first)
       content.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
 
@@ -93,25 +77,44 @@ class LocalContentDetectionService {
       const stored = localStorage.getItem('custom_nodes');
       if (!stored) return [];
 
-      const nodes: CustomNode[] = JSON.parse(stored);
+      const nodes: any[] = JSON.parse(stored);
+      console.log('Custom nodes from localStorage:', nodes);
+      
       const customNodeContent = await Promise.all(nodes.map(async (node) => {
         const id = `custom-node-${node.type}`;
+        
+        // Handle both CustomNodeDefinition format (new) and CustomNode format (legacy)
+        let content = '';
+        if (node.executionCode) {
+          // New format: CustomNodeDefinition
+          content = JSON.stringify({
+            ...node,
+            // Ensure all required fields are present
+            implementation: node.executionCode // Add legacy field for compatibility
+          }, null, 2);
+        } else if (node.implementation) {
+          // Legacy format: CustomNode
+          content = node.implementation;
+        }
+        
+        console.log(`Processing custom node ${node.name || node.title}:`, { content: content.substring(0, 100) + '...', node });
+        
         return {
           id,
-          title: node.title || node.type || 'Untitled Custom Node',
+          title: node.name || node.title || node.type || 'Untitled Custom Node',
           description: node.description || 'Custom node for agent builder',
           category: 'custom-node' as const,
-          content: node.implementation,
+          content: content,
           metadata: {
             type: node.type,
             category: node.category,
-            inputs: node.inputs,
-            outputs: node.outputs,
-            properties: node.properties,
-            version: node.version,
-            author: node.author
+            inputs: node.inputs || [],
+            outputs: node.outputs || [],
+            properties: node.properties || [],
+            version: node.version || '1.0.0',
+            author: node.author || node.customMetadata?.createdBy || 'Unknown'
           },
-          lastModified: this.getValidDate(node.updatedAt || node.createdAt),
+          lastModified: this.getValidDate(node.customMetadata?.createdAt || node.updatedAt || node.createdAt),
           isShared: await this.isShared(id)
         };
       }));

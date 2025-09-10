@@ -21,11 +21,13 @@ export class CustomNodeManager {
    */
   registerCustomNode(nodeDefinition: CustomNodeDefinition): void {
     try {
+      console.log('CustomNodeManager: Registering node:', nodeDefinition);
       this.validateNode(nodeDefinition);
       this.customNodes.set(nodeDefinition.type, nodeDefinition);
       
       // Store in localStorage for persistence
       this.saveToStorage();
+      console.log('CustomNodeManager: Node registered and saved to storage');
       
       console.log(`Custom node registered: ${nodeDefinition.name}`);
     } catch (error) {
@@ -50,7 +52,9 @@ export class CustomNodeManager {
    * Get all registered custom nodes
    */
   getCustomNodes(): CustomNodeDefinition[] {
-    return Array.from(this.customNodes.values());
+    const nodes = Array.from(this.customNodes.values());
+    console.log('CustomNodeManager: Getting custom nodes:', nodes);
+    return nodes;
   }
 
   /**
@@ -262,7 +266,9 @@ export class CustomNodeManager {
   private saveToStorage(): void {
     try {
       const nodes = Array.from(this.customNodes.values());
+      console.log('CustomNodeManager: Saving nodes to localStorage:', nodes);
       localStorage.setItem('custom_nodes', JSON.stringify(nodes));
+      console.log('CustomNodeManager: Nodes saved to localStorage successfully');
     } catch (error) {
       console.warn('Failed to save custom nodes to storage:', error);
     }
@@ -350,6 +356,15 @@ export class CustomNodeManager {
     this.customNodes.clear();
     this.nodeComponents.clear();
     localStorage.removeItem('custom_nodes');
+  }
+
+  /**
+   * Reload custom nodes from localStorage (public method)
+   */
+  reloadFromStorage(): void {
+    console.log('CustomNodeManager: Reloading from storage...');
+    this.loadStoredNodes();
+    console.log('CustomNodeManager: Reload completed, current nodes:', Array.from(this.customNodes.values()));
   }
 }
 

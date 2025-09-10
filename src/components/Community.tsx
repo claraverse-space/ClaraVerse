@@ -14,11 +14,12 @@ import {
   Share2,
   Clock,
   X,
+  ChevronDown,
   Heart,
   Download,
-  Eye,
-  ExternalLink
+  Eye
 } from 'lucide-react';
+import { CustomNodeDefinition } from '../types/agent/types';
 import { CommunityService, LocalUserManager, CommunityResource } from '../services/communityService';
 import UserSetupModal from './UserSetupModal';
 import ResourceDetailModal from './ResourceDetailModal';
@@ -28,7 +29,7 @@ const Community: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'popular' | 'downloads'>('recent');
-  const [activeTab, setActiveTab] = useState<'local' | 'shared'>('local');
+  const [activeTab, setActiveTab] = useState<'local' | 'shared'>('shared');
   
   // User and setup state
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
@@ -53,12 +54,26 @@ const Community: React.FC = () => {
   // Interaction states
   const [likedResources, setLikedResources] = useState<Set<string>>(new Set());
   const [downloadingResources, setDownloadingResources] = useState<Set<string>>(new Set());
+  const [downloadedResources, setDownloadedResources] = useState<Set<string>>(new Set());
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMorePages, setHasMorePages] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const ITEMS_PER_PAGE = 20;
+
+  // Filter state
+  const [showDownloaded, setShowDownloaded] = useState(false);
   
   // Toast state
   const [toast, setToast] = useState<{
     show: boolean;
     message: string;
     type: 'success' | 'error' | 'info';
+    enhanced?: {
+      description: string;
+      actions: Array<{ label: string; action: () => void; variant?: 'primary' | 'secondary' }>;
+    };
   }>({ show: false, message: '', type: 'info' });
 
   // Check Supabase connection and user on mount
@@ -89,10 +104,37 @@ const Community: React.FC = () => {
       if (activeTab === 'local') {
         loadLocalContent();
       } else if (activeTab === 'shared') {
+        setCurrentPage(1); // Reset pagination when switching tabs
         loadSharedResources();
       }
     }
   }, [supabaseConnected, activeTab, searchQuery, selectedCategory]);
+
+  // Load downloaded resources list from localStorage
+  useEffect(() => {
+    const loadDownloadedResources = () => {
+      try {
+        const customNodes = JSON.parse(localStorage.getItem('custom_nodes') || '[]');
+        const downloadedIds = new Set<string>(
+          customNodes
+            .filter((node: any) => node.customMetadata?.sharedWith?.includes('community'))
+            .map((node: any) => String(node.id?.replace('imported-', '') || ''))
+            .filter(Boolean)
+        );
+        setDownloadedResources(downloadedIds);
+      } catch (error) {
+        console.error('Error loading downloaded resources:', error);
+      }
+    };
+    
+    loadDownloadedResources();
+    
+    // Listen for custom nodes updates to refresh downloaded list
+    const handleCustomNodesUpdate = () => loadDownloadedResources();
+    window.addEventListener('customNodesUpdated', handleCustomNodesUpdate);
+    
+    return () => window.removeEventListener('customNodesUpdated', handleCustomNodesUpdate);
+  }, []);
 
   // Auto-hide toast
   useEffect(() => {
@@ -119,20 +161,47 @@ const Community: React.FC = () => {
     }
   };
 
-  const loadSharedResources = async () => {
-    setLoadingSharedContent(true);
+  const loadSharedResources = async (loadMore = false) => {
+    if (loadMore) {
+      setIsLoadingMore(true);
+    } else {
+      setLoadingSharedContent(true);
+    }
+    
     try {
+      const page = loadMore ? currentPage + 1 : 1;
+      const offset = (page - 1) * ITEMS_PER_PAGE;
+      
       const resources = await CommunityService.getResources({
         search: searchQuery || undefined,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        limit: 50
+        limit: ITEMS_PER_PAGE,
+        offset: offset
       });
+      
       console.log('Loaded shared resources:', resources);
-      setSharedResources(resources);
+      console.log('Custom node resources:', resources.filter(r => r.category === 'custom-node'));
+      
+      // Filter out downloaded resources if needed
+      let filteredResources = resources;
+      if (!showDownloaded) {
+        filteredResources = resources.filter(r => !downloadedResources.has(r.id));
+      }
+      
+      if (loadMore) {
+        setSharedResources(prev => [...prev, ...filteredResources]);
+        setCurrentPage(page);
+      } else {
+        setSharedResources(filteredResources);
+        setCurrentPage(1);
+      }
+      
+      // Check if there are more pages
+      setHasMorePages(resources.length === ITEMS_PER_PAGE);
       
       // Check which resources are liked by current user
       if (currentUser) {
-        checkUserLikes(resources.map(r => r.id));
+        checkUserLikes(filteredResources.map(r => r.id));
       }
     } catch (error) {
       console.error('Error loading shared resources:', error);
@@ -143,6 +212,7 @@ const Community: React.FC = () => {
       });
     } finally {
       setLoadingSharedContent(false);
+      setIsLoadingMore(false);
     }
   };
 
@@ -307,7 +377,23 @@ const Community: React.FC = () => {
     }
   };
 
-  const handleResourceClick = (resource: CommunityResource) => {
+  const handleResourceClick = async (resource: CommunityResource) => {
+    // Track view when resource is clicked for preview
+    try {
+      await CommunityService.incrementViews(resource.id);
+      
+      // Update the view count in the local state immediately
+      setSharedResources(prev => 
+        prev.map(r => 
+          r.id === resource.id 
+            ? { ...r, views_count: (r.views_count || 0) + 1 }
+            : r
+        )
+      );
+    } catch (error) {
+      console.error('Error incrementing views:', error);
+    }
+    
     setSelectedResource(resource);
     setShowResourceDetail(true);
   };
@@ -350,17 +436,226 @@ const Community: React.FC = () => {
     }
   };
 
+  // Enhanced download feedback system
+  const showEnhancedFeedback = (config: {
+    title: string;
+    description: string;
+    actions: Array<{ label: string; action: () => void; variant?: 'primary' | 'secondary' }>;
+    duration?: number;
+    type?: 'success' | 'error' | 'info';
+  }) => {
+    setToast({
+      show: true,
+      message: config.title,
+      type: config.type || 'success',
+      enhanced: {
+        description: config.description,
+        actions: config.actions
+      }
+    });
+    
+    if (config.duration) {
+      setTimeout(() => {
+        setToast(prev => ({ ...prev, show: false }));
+      }, config.duration);
+    }
+  };
+
   const handleResourceDownload = async (e: React.MouseEvent, resource: CommunityResource) => {
     e.stopPropagation(); // Prevent opening detail modal
+    
+    console.log('=== DOWNLOAD HANDLER CALLED ===');
+    console.log('Resource:', resource);
+    console.log('Resource category:', resource.category);
+    console.log('Resource content:', resource.content);
     
     try {
       setDownloadingResources(prev => new Set(prev).add(resource.id));
       
       // Track download
       await CommunityService.incrementDownloads(resource.id);
+      console.log('Download count incremented');
       
       // Handle different content types
-      if (resource.content_type === 'image/base64' && resource.content) {
+      if (resource.category === 'custom-node' && resource.content) {
+        console.log('Processing custom-node download...');
+        // Add custom node to the user's local custom nodes
+        try {
+          // Parse the custom node implementation
+          const customNodeCode = resource.content;
+          
+          let originalNodeDefinition = null;
+          let executionCode = customNodeCode;
+          let inputs: any[] = [];
+          let outputs: any[] = [];
+          let properties: any[] = [];
+          
+          // Try to parse the content as a complete CustomNodeDefinition JSON
+          try {
+            originalNodeDefinition = JSON.parse(customNodeCode);
+            console.log('Parsed original node definition:', originalNodeDefinition);
+            
+            if (originalNodeDefinition.executionCode) {
+              executionCode = originalNodeDefinition.executionCode;
+              console.log('Extracted execution code length:', executionCode.length);
+            }
+            if (originalNodeDefinition.inputs) {
+              inputs = originalNodeDefinition.inputs;
+              console.log('Extracted inputs:', inputs);
+            }
+            if (originalNodeDefinition.outputs) {
+              outputs = originalNodeDefinition.outputs;
+              console.log('Extracted outputs:', outputs);
+            }
+            if (originalNodeDefinition.properties) {
+              properties = originalNodeDefinition.properties;
+              console.log('Extracted properties:', properties);
+            }
+          } catch (parseError) {
+            console.log('Content is not JSON, treating as raw execution code');
+            console.log('Parse error:', parseError instanceof Error ? parseError.message : String(parseError));
+            // If parsing fails, treat it as raw execution code
+            executionCode = customNodeCode;
+          }
+          
+          // Create a new custom node object based on the shared resource
+          const newCustomNode: CustomNodeDefinition = {
+            id: `imported-${resource.id}`,
+            type: resource.title.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+            name: resource.title,
+            description: resource.description,
+            category: 'imported',
+            inputs: inputs,
+            outputs: outputs,
+            properties: properties,
+            executionCode: executionCode,
+            version: resource.version || '1.0.0',
+            executionHandler: 'custom-node-handler',
+            icon: '📦', // Default icon for imported nodes
+            author: resource.author_username,
+            uiConfig: {
+              backgroundColor: '#8B5CF6', // Purple for imported nodes
+              iconUrl: undefined,
+              customStyling: ''
+            },
+            customMetadata: {
+              isUserCreated: true as const,
+              createdBy: resource.author_username,
+              createdAt: new Date().toISOString(),
+              published: false,
+              downloadCount: resource.downloads_count || 0,
+              rating: resource.likes_count || 0,
+              sharedWith: [],
+            },
+            metadata: {
+              tags: ['imported', 'community'],
+              documentation: '',
+              examples: []
+            }
+          };
+          
+          // Use the CustomNodeManager to properly register the node
+          // Import the customNodeManager
+          console.log('Attempting to import CustomNodeManager...');
+          const { customNodeManager } = await import('./AgentBuilder/NodeCreator/CustomNodeManager');
+          console.log('CustomNodeManager imported successfully:', customNodeManager);
+          
+          // Check if this custom node already exists
+          const existingNode = customNodeManager.getCustomNode(newCustomNode.type);
+          console.log('Existing node check:', existingNode);
+          
+          if (existingNode) {
+            // Node with same type exists - create unique type
+            console.log('Node exists, creating unique type...');
+            newCustomNode.type = `${newCustomNode.type}-${resource.id}`;
+            customNodeManager.registerCustomNode(newCustomNode);
+            console.log('Registered custom node with unique type:', newCustomNode.type);
+            showEnhancedFeedback({
+              title: `"${resource.title}" Added Successfully!`,
+              description: 'Custom node is now available in Agent Studio with a unique name to avoid conflicts.',
+              actions: [
+                { 
+                  label: 'Try it now', 
+                  action: () => window.location.href = '#/agents',
+                  variant: 'primary' 
+                },
+                { 
+                  label: 'View in Studio', 
+                  action: () => {
+                    setToast(prev => ({ ...prev, show: false }));
+                    // Could add navigation to Agent Studio here
+                  },
+                  variant: 'secondary' 
+                }
+              ],
+              duration: 8000,
+              type: 'success'
+            });
+          } else {
+            // Add new node
+            console.log('Registering new custom node:', newCustomNode);
+            customNodeManager.registerCustomNode(newCustomNode);
+            console.log('Custom node registered successfully');
+            showEnhancedFeedback({
+              title: `"${resource.title}" Added Successfully!`,
+              description: 'Custom node is now available in your Agent Studio node library.',
+              actions: [
+                { 
+                  label: 'Open Agent Studio', 
+                  action: () => window.location.href = '#/agents',
+                  variant: 'primary' 
+                },
+                { 
+                  label: 'View Documentation', 
+                  action: () => handleResourceClick(resource),
+                  variant: 'secondary' 
+                }
+              ],
+              duration: 8000,
+              type: 'success'
+            });
+          }
+          
+          // Trigger custom nodes sync if available
+          console.log('Dispatching customNodesUpdated event...');
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('customNodesUpdated'));
+            console.log('Event dispatched successfully');
+          }
+          
+        } catch (parseError) {
+          console.error('Error adding custom node:', parseError);
+          // Enhanced error feedback with recovery options
+          showEnhancedFeedback({
+            title: 'Installation Failed',
+            description: 'Could not install the custom node automatically. You can still download it as a file and import manually.',
+            actions: [
+              { 
+                label: 'Download File', 
+                action: () => {
+                  const blob = new Blob([resource.content || ''], { type: 'text/javascript' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `${resource.title}.js`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                },
+                variant: 'primary' 
+              },
+              { 
+                label: 'Get Help', 
+                action: () => handleResourceClick(resource),
+                variant: 'secondary' 
+              }
+            ],
+            duration: 10000,
+            type: 'error'
+          });
+        }
+      } else if (resource.content_type === 'image/base64' && resource.content) {
         // Download image
         const link = document.createElement('a');
         link.href = resource.content;
@@ -368,9 +663,34 @@ const Community: React.FC = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        
+        showEnhancedFeedback({
+          title: 'Image Downloaded!',
+          description: `"${resource.title}" has been saved to your downloads folder.`,
+          actions: [
+            { 
+              label: 'View Similar', 
+              action: () => {
+                setSelectedCategory('image');
+                setToast(prev => ({ ...prev, show: false }));
+              },
+              variant: 'secondary' 
+            }
+          ],
+          duration: 5000,
+          type: 'success'
+        });
       } else if (resource.download_url) {
         // Open download URL
         window.open(resource.download_url, '_blank');
+        
+        showEnhancedFeedback({
+          title: 'Download Started!',
+          description: 'The download has opened in a new tab.',
+          actions: [],
+          duration: 3000,
+          type: 'success'
+        });
       } else if (resource.content) {
         // Download text content
         const blob = new Blob([resource.content], { type: 'text/plain' });
@@ -382,6 +702,20 @@ const Community: React.FC = () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+        
+        showEnhancedFeedback({
+          title: 'Resource Downloaded!',
+          description: `"${resource.title}" has been saved as a text file.`,
+          actions: [
+            { 
+              label: 'Browse More', 
+              action: () => setToast(prev => ({ ...prev, show: false })),
+              variant: 'secondary' 
+            }
+          ],
+          duration: 5000,
+          type: 'success'
+        });
       }
       
       // Update download count in the list
@@ -393,16 +727,28 @@ const Community: React.FC = () => {
         )
       );
       
-      setToast({
-        show: true,
-        message: 'Resource downloaded successfully!',
-        type: 'success'
-      });
     } catch (error) {
-      console.error('Error downloading resource:', error);
-      setToast({
-        show: true,
-        message: 'Failed to download resource. Please try again.',
+      console.error('=== ERROR DOWNLOADING RESOURCE ===');
+      console.error('Error:', error);
+      console.error('Resource:', resource);
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      showEnhancedFeedback({
+        title: 'Download Failed',
+        description: `Sorry, we couldn't download "${resource.title}". This might be a temporary issue.`,
+        actions: [
+          { 
+            label: 'Try Again', 
+            action: () => handleResourceDownload(e, resource),
+            variant: 'primary' 
+          },
+          { 
+            label: 'Report Issue', 
+            action: () => handleResourceClick(resource),
+            variant: 'secondary' 
+          }
+        ],
+        duration: 8000,
         type: 'error'
       });
     } finally {
@@ -485,17 +831,45 @@ const Community: React.FC = () => {
     }
   };
 
+  // Trust score calculation (simplified version)
+  const calculateTrustScore = (resource: CommunityResource) => {
+    const downloadWeight = Math.min(resource.downloads_count || 0, 100) * 0.4;
+    const likesWeight = Math.min(resource.likes_count || 0, 50) * 0.3;
+    const recentWeight = resource.created_at && 
+      (Date.now() - new Date(resource.created_at).getTime()) < 30 * 24 * 60 * 60 * 1000 ? 20 : 0; // Recent = last 30 days
+    const authorWeight = resource.author_username ? 10 : 0;
+    
+    return Math.min(Math.round(downloadWeight + likesWeight + recentWeight + authorWeight), 100);
+  };
+
+  // Get trust badge based on score
+  const getTrustBadge = (score: number) => {
+    if (score >= 90) return { emoji: '🥇', label: 'Highly Trusted', color: 'text-yellow-700 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900/30' };
+    if (score >= 75) return { emoji: '🥈', label: 'Trusted', color: 'text-gray-700 bg-gray-100 dark:text-gray-300 dark:bg-gray-800/50' };
+    if (score >= 60) return { emoji: '🥉', label: 'Reliable', color: 'text-orange-700 bg-orange-100 dark:text-orange-300 dark:bg-orange-900/30' };
+    if (score >= 40) return { emoji: '⚠️', label: 'Use Caution', color: 'text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/30' };
+    return { emoji: '🔍', label: 'Unverified', color: 'text-blue-700 bg-blue-100 dark:text-blue-300 dark:bg-blue-900/30' };
+  };
+
+  // Parse custom node for preview
+  const parseCustomNodePreview = (content: string) => {
+    try {
+      const parsed = JSON.parse(content);
+      return {
+        inputs: parsed.inputs?.length || 0,
+        outputs: parsed.outputs?.length || 0,
+        properties: parsed.properties?.length || 0,
+        hasExecutionCode: !!parsed.executionCode
+      };
+    } catch {
+      return { inputs: '?', outputs: '?', properties: '?', hasExecutionCode: true };
+    }
+  };
+
   const categories = [
     { id: 'all', name: 'All', icon: Users },
     { id: 'custom-node', name: 'Custom Nodes', icon: Code2 },
-    { id: 'image', name: 'Generated Images', icon: Image },
-    { id: 'wallpaper', name: 'Wallpapers', icon: Image },
     { id: 'tool', name: 'Tools', icon: Package }
-    // TODO: Add back when ready
-    // { id: 'prompt', name: 'Prompts', icon: FileText },
-    // { id: 'mcp-server', name: 'MCP Servers', icon: Package },
-    // { id: 'workflow', name: 'Workflows', icon: Package },
-    // { id: 'tutorial', name: 'Tutorials', icon: FileText }
   ];
 
   const filteredContent = getFilteredContent();
@@ -647,6 +1021,27 @@ const Community: React.FC = () => {
                   );
                 })}
               </div>
+
+              {/* Downloaded Resources Filter */}
+              {activeTab === 'shared' && downloadedResources.size > 0 && (
+                <div className="glassmorphic p-4 rounded-xl border border-white/20 dark:border-gray-700/30 bg-gradient-to-br from-white/20 to-white/5 dark:from-gray-800/20 dark:to-gray-900/5">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-sakura-500" />
+                    Downloaded Items
+                  </h4>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showDownloaded}
+                      onChange={(e) => setShowDownloaded(e.target.checked)}
+                      className="w-4 h-4 text-sakura-600 bg-white/60 border-gray-300 rounded focus:ring-sakura-500 focus:ring-2"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Show downloaded ({downloadedResources.size})
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {/* Connection Status */}
               <div className="glassmorphic p-4 rounded-xl border border-white/20 dark:border-gray-700/30 bg-gradient-to-br from-white/20 to-white/5 dark:from-gray-800/20 dark:to-gray-900/5">
@@ -850,18 +1245,6 @@ const Community: React.FC = () => {
                                 </div>
                               </div>
                               
-                              {/* Show image thumbnail for image category */}
-                              {item.category === 'image' && item.thumbnailUrl && (
-                                <div className="mb-3 rounded-lg overflow-hidden">
-                                  <img 
-                                    src={item.thumbnailUrl} 
-                                    alt={item.title}
-                                    className="w-full h-32 object-cover hover:scale-105 transition-transform duration-200"
-                                    loading="lazy"
-                                  />
-                                </div>
-                              )}
-                              
                               <h3 className="font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
                                 {item.title}
                               </h3>
@@ -957,118 +1340,199 @@ const Community: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {sharedResources.map((resource) => {
                         const IconComponent = getCategoryIcon(resource.category);
                         const isLiked = likedResources.has(resource.id);
                         const isDownloading = downloadingResources.has(resource.id);
+                        const trustScore = calculateTrustScore(resource);
+                        const trustBadge = getTrustBadge(trustScore);
+                        const nodePreview = resource.category === 'custom-node' && resource.content 
+                          ? parseCustomNodePreview(resource.content) 
+                          : null;
                         
                         return (
                           <div
                             key={resource.id}
-                            onClick={() => handleResourceClick(resource)}
-                            className="glassmorphic rounded-xl p-6 border border-white/20 dark:border-gray-700/30 hover:border-sakura-200 dark:hover:border-sakura-700 transition-all duration-200 hover:shadow-xl cursor-pointer group flex flex-col h-full"
+                            className="glassmorphic rounded-xl p-5 border border-white/20 dark:border-gray-700/30 hover:border-sakura-200 dark:hover:border-sakura-700 transition-all duration-300 hover:shadow-2xl cursor-pointer group flex flex-col h-full relative overflow-hidden"
                           >
-                            <div className="flex items-start justify-between mb-3">
-                              <div className={`p-2 rounded-lg ${getCategoryColor(resource.category)}`}>
-                                <IconComponent className="w-5 h-5" />
+                            {/* Trust Badge - Top Right */}
+                            <div className="absolute top-3 right-3 z-10">
+                              <div className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${trustBadge.color} shadow-sm`}>
+                                <span className="text-xs">{trustBadge.emoji}</span>
+                                <span className="font-semibold">{trustBadge.label}</span>
+                                {/* <span className="opacity-75">({trustScore})</span> */}
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs px-2 py-1 bg-white/50 dark:bg-gray-700/50 rounded-full text-gray-600 dark:text-gray-400 capitalize">
-                                  {resource.category.replace('-', ' ')}
-                                </span>
+                            </div>
+
+                            {/* Header */}
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-3 rounded-xl ${getCategoryColor(resource.category)} shadow-sm`}>
+                                  <IconComponent className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <div className="text-xs px-2 py-1 bg-white/60 dark:bg-gray-700/60 rounded-full text-gray-600 dark:text-gray-400 capitalize font-medium">
+                                    {resource.category.replace('-', ' ')}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                             
-                            {/* Show image thumbnail for wallpaper category */}
-                            {resource.category === 'wallpaper' && resource.thumbnail_url && (
-                              <div className="mb-3 rounded-lg overflow-hidden">
-                                <img 
-                                  src={resource.thumbnail_url} 
-                                  alt={resource.title}
-                                  className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-200"
-                                  loading="lazy"
-                                />
+                            {/* Title & Description */}
+                            <div className="mb-4">
+                              <h3 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 text-base leading-tight group-hover:text-sakura-600 dark:group-hover:text-sakura-400 transition-colors">
+                                {resource.title}
+                              </h3>
+                              
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-3 leading-relaxed">
+                                {resource.description}
+                              </p>
+                            </div>
+
+                            {/* Node Preview for Custom Nodes */}
+                            {nodePreview && (
+                              <div className="mb-4 p-3 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg border border-purple-200/50 dark:border-purple-700/50">
+                                <div className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
+                                  <Code2 className="w-3 h-3" />
+                                  Node Structure
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                  <div className="text-center">
+                                    <div className="text-green-600 dark:text-green-400 font-bold">{nodePreview.inputs}</div>
+                                    <div className="text-gray-500">Inputs</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-blue-600 dark:text-blue-400 font-bold">{nodePreview.outputs}</div>
+                                    <div className="text-gray-500">Outputs</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-orange-600 dark:text-orange-400 font-bold">{nodePreview.properties}</div>
+                                    <div className="text-gray-500">Props</div>
+                                  </div>
+                                </div>
+                                {nodePreview.hasExecutionCode && (
+                                  <div className="mt-2 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                    <span>Ready to Execute</span>
+                                  </div>
+                                )}
                               </div>
                             )}
                             
-                            <h3 className="font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
-                              {resource.title}
-                            </h3>
-                            
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3 flex-grow">
-                              {resource.description}
-                            </p>
-                            
-                            {/* Resource Stats */}
-                            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-4">
-                              <div className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{new Date(resource.created_at).toLocaleDateString()}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1">
-                                  <Eye className="w-3 h-3" />
-                                  <span>{resource.views_count}</span>
+                            {/* Quick Stats */}
+                            <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-white/30 dark:bg-gray-800/30 rounded-lg">
+                              <div className="text-center">
+                                <div className="flex items-center justify-center gap-1 text-gray-600 dark:text-gray-400 mb-1">
+                                  <Download className="w-3 h-3" />
                                 </div>
-                                <span className="text-xs text-gray-400">by {resource.author_username}</span>
+                                <div className="text-sm font-bold text-gray-900 dark:text-white">{resource.downloads_count || 0}</div>
+                                <div className="text-xs text-gray-500">Downloads</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="flex items-center justify-center gap-1 text-gray-600 dark:text-gray-400 mb-1">
+                                  <Heart className="w-3 h-3" />
+                                </div>
+                                <div className="text-sm font-bold text-gray-900 dark:text-white">{resource.likes_count || 0}</div>
+                                <div className="text-xs text-gray-500">Likes</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="flex items-center justify-center gap-1 text-gray-600 dark:text-gray-400 mb-1">
+                                  <Eye className="w-3 h-3" />
+                                </div>
+                                <div className="text-sm font-bold text-gray-900 dark:text-white">{resource.views_count || 0}</div>
+                                <div className="text-xs text-gray-500">Views</div>
                               </div>
                             </div>
 
-                            {/* Interactive Buttons - Always at bottom */}
-                            <div className="flex items-center justify-between pt-3 border-t border-white/10 dark:border-gray-700/30 mt-auto">
-                              <div className="flex items-center gap-2">
-                                {/* Like Button */}
-                                <button
-                                  onClick={(e) => handleResourceLike(e, resource.id)}
-                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition-all duration-200 ${
-                                    isLiked
-                                      ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                                      : 'bg-white/20 dark:bg-gray-700/30 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-600 dark:text-gray-400 hover:text-red-500'
-                                  }`}
-                                  title={isLiked ? 'Unlike' : 'Like'}
-                                >
-                                  <Heart className={`w-3 h-3 ${isLiked ? 'fill-current' : ''}`} />
-                                  <span>{resource.likes_count}</span>
-                                </button>
-
-                                {/* View Details Button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleResourceClick(resource);
-                                  }}
-                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs bg-white/20 dark:bg-gray-700/30 hover:bg-sakura-50 dark:hover:bg-sakura-900/20 text-gray-600 dark:text-gray-400 hover:text-sakura-600 transition-all duration-200"
-                                  title="View details"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  <span>Details</span>
-                                </button>
+                            {/* Author & Date */}
+                            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-4">
+                              <div className="flex items-center gap-1">
+                                <div className="w-6 h-6 bg-gradient-to-br from-sakura-400 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                  {resource.author_username?.[0]?.toUpperCase() || 'U'}
+                                </div>
+                                <span className="font-medium">by {resource.author_username}</span>
                               </div>
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span>{new Date(resource.created_at).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric',
+                                  year: new Date(resource.created_at).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                                })}</span>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-2 mt-auto">
+                              {/* Preview/Details Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleResourceClick(resource);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white/60 dark:bg-gray-700/60 hover:bg-white/80 dark:hover:bg-gray-700/80 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md"
+                                title="Preview and view details"
+                              >
+                                <Eye className="w-4 h-4" />
+                                <span>Preview</span>
+                              </button>
+
+                              {/* Like Button */}
+                              <button
+                                onClick={(e) => handleResourceLike(e, resource.id)}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md ${
+                                  isLiked
+                                    ? 'bg-red-500 text-white shadow-md'
+                                    : 'bg-white/60 dark:bg-gray-700/60 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-700 dark:text-gray-300 hover:text-red-500'
+                                }`}
+                                title={isLiked ? 'Unlike' : 'Like'}
+                              >
+                                <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+                              </button>
 
                               {/* Download Button */}
                               <button
                                 onClick={(e) => handleResourceDownload(e, resource)}
                                 disabled={isDownloading}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-sakura-500 hover:bg-sakura-600 disabled:bg-gray-400 text-white rounded-lg text-xs transition-all duration-200 font-medium disabled:cursor-not-allowed"
-                                title="Download resource"
+                                className="px-4 py-2 bg-sakura-500 hover:bg-sakura-600 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none"
+                                title="Download and install"
                               >
                                 {isDownloading ? (
-                                  <>
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    <span>Downloading...</span>
-                                  </>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
-                                  <>
-                                    <Download className="w-3 h-3" />
-                                    <span>{resource.downloads_count}</span>
-                                  </>
+                                  <Download className="w-4 h-4" />
                                 )}
                               </button>
                             </div>
                           </div>
                         );
                       })}
+                      </div>
+                      
+                      {/* Pagination Controls */}
+                      {hasMorePages && (
+                        <div className="flex justify-center mt-8">
+                          <button
+                            onClick={() => loadSharedResources(true)}
+                            disabled={isLoadingMore}
+                            className="flex items-center gap-2 px-6 py-3 bg-white/60 dark:bg-gray-700/60 hover:bg-white/80 dark:hover:bg-gray-700/80 text-gray-700 dark:text-gray-300 rounded-xl font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isLoadingMore ? (
+                              <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                <span>Loading more...</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-5 h-5" />
+                                <span>Load More</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1092,21 +1556,65 @@ const Community: React.FC = () => {
         onClose={() => setShowResourceDetail(false)}
       />
 
-      {/* Toast Notification */}
+      {/* Enhanced Toast Notification */}
       {toast.show && (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-2 duration-300">
-          <div className={`px-6 py-4 rounded-xl shadow-2xl border backdrop-blur-sm max-w-md ${
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-2 duration-300 max-w-md">
+          <div className={`rounded-xl shadow-2xl border backdrop-blur-sm ${
             toast.type === 'success' 
-              ? 'bg-green-500/90 text-white border-green-400/50' 
+              ? 'bg-green-500/95 text-white border-green-400/50' 
               : toast.type === 'error'
-              ? 'bg-red-500/90 text-white border-red-400/50'
-              : 'bg-blue-500/90 text-white border-blue-400/50'
+              ? 'bg-red-500/95 text-white border-red-400/50'
+              : 'bg-blue-500/95 text-white border-blue-400/50'
           }`}>
-            <div className="flex items-center gap-3">
-              {toast.type === 'success' && <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">✓</div>}
-              {toast.type === 'error' && <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">✕</div>}
-              {toast.type === 'info' && <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">i</div>}
-              <span className="font-medium">{toast.message}</span>
+            {/* Main content */}
+            <div className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  {toast.type === 'success' && <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-sm">✓</div>}
+                  {toast.type === 'error' && <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-sm">✕</div>}
+                  {toast.type === 'info' && <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center text-sm">ℹ</div>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-white mb-1">{toast.message}</h4>
+                  {toast.enhanced?.description && (
+                    <p className="text-sm text-white/90 mb-3 leading-relaxed">
+                      {toast.enhanced.description}
+                    </p>
+                  )}
+                  
+                  {/* Action buttons */}
+                  {toast.enhanced?.actions && toast.enhanced.actions.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {toast.enhanced.actions.map((action, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            action.action();
+                            if (action.variant !== 'secondary') {
+                              setToast(prev => ({ ...prev, show: false }));
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            action.variant === 'primary'
+                              ? 'bg-white text-gray-900 hover:bg-gray-100 shadow-md'
+                              : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                          }`}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Close button */}
+                <button
+                  onClick={() => setToast(prev => ({ ...prev, show: false }))}
+                  className="flex-shrink-0 p-1 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

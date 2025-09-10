@@ -147,6 +147,21 @@ export const AgentBuilderProvider: React.FC<AgentBuilderProviderProps> = ({ chil
     syncCustomNodes();
   }, [syncCustomNodes]);
 
+  // Listen for custom nodes updates from community downloads
+  useEffect(() => {
+    const handleCustomNodesUpdate = () => {
+      // Reload custom nodes from storage
+      customNodeManager.reloadFromStorage();
+      syncCustomNodes();
+    };
+
+    window.addEventListener('customNodesUpdated', handleCustomNodesUpdate);
+    
+    return () => {
+      window.removeEventListener('customNodesUpdated', handleCustomNodesUpdate);
+    };
+  }, [syncCustomNodes]);
+
   // Helper to generate unique IDs
   const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
