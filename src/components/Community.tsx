@@ -22,6 +22,7 @@ import { CustomNodeDefinition } from '../types/agent/types';
 import { CommunityService, LocalUserManager, CommunityResource } from '../services/communityService';
 import UserSetupModal from './UserSetupModal';
 import ResourceDetailModal from './ResourceDetailModal';
+import SecurityScanModal from './SecurityScanModal';
 import { localContentService, LocalContent } from '../services/localContentService';
 import { db } from '../db';
 import { getDefaultWallpaper } from '../utils/uiPreferences';
@@ -55,6 +56,10 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
   // Resource detail modal state
   const [selectedResource, setSelectedResource] = useState<CommunityResource | null>(null);
   const [showResourceDetail, setShowResourceDetail] = useState(false);
+  
+  // Security scan modal state
+  const [showSecurityScan, setShowSecurityScan] = useState(false);
+  const [securityScanResource, setSecurityScanResource] = useState<CommunityResource | null>(null);
   
   // Interaction states
   const [likedResources, setLikedResources] = useState<Set<string>>(new Set());
@@ -536,17 +541,29 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
   const handleResourceDownload = async (e: React.MouseEvent, resource: CommunityResource) => {
     e.stopPropagation(); // Prevent opening detail modal
     
+    console.log('=== DOWNLOAD BUTTON CLICKED ===');
+    console.log('Resource:', resource);
+    console.log('Resource ID:', resource.id);
+    
     // Check if user has already downloaded this resource
     const hasAlreadyDownloaded = userDownloadedResources.has(resource.id);
+    console.log('Has already downloaded:', hasAlreadyDownloaded);
     
     if (hasAlreadyDownloaded) {
+      console.log('Showing re-download confirmation dialog');
       showEnhancedFeedback({
         title: 'Re-downloading Resource',
         description: `Re-downloading "${resource.title}". Download count will not be incremented again for fair statistics.`,
         actions: [
           { 
             label: 'Continue', 
-            action: () => setToast(prev => ({ ...prev, show: false })),
+            action: () => {
+              console.log('Re-download confirmed, showing security scan modal');
+              setToast(prev => ({ ...prev, show: false }));
+              // Show security scan modal
+              setSecurityScanResource(resource);
+              setShowSecurityScan(true);
+            },
             variant: 'primary' 
           },
           { 
@@ -558,7 +575,16 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
         duration: 4000,
         type: 'info'
       });
+    } else {
+      console.log('First time download, showing security scan modal directly');
+      // Show security scan modal for new downloads
+      setSecurityScanResource(resource);
+      setShowSecurityScan(true);
     }
+  };
+
+  const performActualDownload = async (resource: CommunityResource) => {
+    const hasAlreadyDownloaded = userDownloadedResources.has(resource.id);
     
     console.log('=== DOWNLOAD HANDLER CALLED ===');
     console.log('Resource:', resource);
@@ -920,7 +946,7 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
         actions: [
           { 
             label: 'Try Again', 
-            action: () => handleResourceDownload(e, resource),
+            action: () => performActualDownload(resource),
             variant: 'primary' 
           },
           { 
@@ -1786,6 +1812,25 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
         isOpen={showResourceDetail}
         onClose={() => setShowResourceDetail(false)}
       />
+
+      {/* Security Scan Modal */}
+      {securityScanResource && (
+        <SecurityScanModal
+          resource={securityScanResource}
+          isOpen={showSecurityScan}
+          onClose={() => {
+            setShowSecurityScan(false);
+            setSecurityScanResource(null);
+          }}
+          onProceed={() => {
+            if (securityScanResource) {
+              performActualDownload(securityScanResource);
+              setShowSecurityScan(false);
+              setSecurityScanResource(null);
+            }
+          }}
+        />
+      )}
 
       {/* Enhanced Toast Notification */}
       {toast.show && (
