@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search, Clock, ChevronRight, ChevronDown } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search, Clock, ChevronRight, ChevronDown, ChevronLeft } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -246,6 +246,147 @@ const Settings = () => {
     apiKey: '',
     isEnabled: true
   });
+  const [addProviderStep, setAddProviderStep] = useState<'select' | 'configure'>('select');
+  useEffect(() => {
+    if (showAddProviderModal) {
+      setAddProviderStep(editingProvider ? 'configure' : 'select');
+    }
+  }, [showAddProviderModal, editingProvider]);
+
+  // Provider presets for OpenAI-compatible backends
+  const [providerSearchQuery, setProviderSearchQuery] = useState('');
+  const [localAvailability, setLocalAvailability] = useState<Record<string, boolean>>({});
+
+  type ProviderPreset = {
+    id: string;
+    label: string;
+    baseUrl: string;
+    type: Provider['type'];
+    brandDomain?: string; // domain to use for logo/favicon lookups (e.g., openai.com)
+  };
+
+  const getHostnameFromUrl = (baseUrl: string): string => {
+    try {
+      return new URL(baseUrl).hostname;
+    } catch {
+      return '';
+    }
+  };
+
+  const getDDGFaviconUrl = (hostname: string): string => {
+    if (!hostname) return '';
+    return `https://icons.duckduckgo.com/ip3/${hostname}.ico`;
+  };
+
+  const getS2FaviconUrl = (hostname: string): string => {
+    if (!hostname) return '';
+    return `https://www.google.com/s2/favicons?sz=64&domain=${hostname}`;
+  };
+
+  const PROVIDER_PRESETS: ProviderPreset[] = [
+    { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', type: 'openai', brandDomain: 'openai.com' },
+    { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', type: 'openrouter', brandDomain: 'openrouter.ai' },
+    { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', type: 'openai_compatible', brandDomain: 'groq.com' },
+    { id: 'grok', label: 'Grok (xAI)', baseUrl: 'https://api.x.ai/v1', type: 'openai_compatible', brandDomain: 'x.ai' },
+    { id: 'gemini', label: 'Google Gemini', baseUrl: 'https://cloudaicompanion.googleapis.com', type: 'openai_compatible', brandDomain: 'gemini.google.com' },
+    { id: 'mistral', label: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', type: 'openai_compatible', brandDomain: 'mistral.ai' },
+    { id: 'meta-llama', label: 'Meta (Llama API)', baseUrl: 'https://llama-api.meta.com/v1', type: 'openai_compatible', brandDomain: 'meta.com' },
+    { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', type: 'openai_compatible', brandDomain: 'deepseek.com' },
+    { id: 'cohere', label: 'Cohere', baseUrl: 'https://api.cohere.ai/v1', type: 'openai_compatible', brandDomain: 'cohere.com' },
+    { id: 'together', label: 'Together AI', baseUrl: 'https://api.together.xyz/v1', type: 'openai_compatible', brandDomain: 'together.ai' },
+    { id: 'huggingface', label: 'HuggingFace', baseUrl: 'https://api-inference.huggingface.co/v1', type: 'openai_compatible', brandDomain: 'huggingface.co' },
+    { id: 'lmstudio', label: 'LM Studio (Local)', baseUrl: 'http://localhost:1234/v1', type: 'openai_compatible', brandDomain: 'lmstudio.ai' },
+    { id: 'llamacpp', label: 'llama.cpp (Local)', baseUrl: 'http://localhost:8080/v1', type: 'openai_compatible' },
+    { id: 'vllm', label: 'vLLM (Local)', baseUrl: 'http://localhost:8000/v1', type: 'openai_compatible', brandDomain: 'vllm.ai' },
+    { id: 'localai', label: 'LocalAI (Local)', baseUrl: 'http://localhost:8080/v1', type: 'openai_compatible', brandDomain: 'localai.io' },
+    { id: 'ollama', label: 'Ollama (Local)', baseUrl: 'http://localhost:11434/v1', type: 'ollama', brandDomain: 'ollama.com' },
+  ];
+
+  const filteredPresets = PROVIDER_PRESETS.filter(p => {
+    const q = providerSearchQuery.toLowerCase();
+    return p.label.toLowerCase().includes(q) || p.baseUrl.toLowerCase().includes(q);
+  });
+
+  const isLocalPreset = (preset: ProviderPreset): boolean => {
+    const host = getHostnameFromUrl(preset.baseUrl);
+    return host === 'localhost' || host.startsWith('127.');
+  };
+
+  const buildModelsUrl = (baseUrl: string): string => {
+    try {
+      let u = baseUrl.trim();
+      if (u.endsWith('/')) u = u.slice(0, -1);
+      if (/(^|\/)v1$/.test(u)) {
+        return `${u}/models`;
+      }
+      return `${u}/v1/models`;
+    } catch {
+      return baseUrl;
+    }
+  };
+
+  const buildProbeUrls = (preset: ProviderPreset): string[] => {
+    // Special-case Ollama: probe /api/tags which returns { models: [...] }
+    const base = preset.baseUrl.replace(/\/$/, '');
+    try {
+      const url = new URL(base);
+      const origin = `${url.protocol}//${url.host}`;
+      if (preset.id === 'ollama') {
+        return [`${origin}/api/tags`];
+      }
+    } catch {}
+    return [buildModelsUrl(base)];
+  };
+
+  const checkLocalPreset = async (preset: ProviderPreset): Promise<void> => {
+    try {
+      const urls = buildProbeUrls(preset);
+      let hasModels = false;
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(2000) });
+          if (!res.ok) continue;
+          const data = await res.json().catch(() => null);
+          if (!data) continue;
+          if (Array.isArray(data)) { hasModels = data.length > 0; }
+          else if (Array.isArray((data as any).data)) { hasModels = (data as any).data.length > 0; }
+          else if (Array.isArray((data as any).models)) { hasModels = (data as any).models.length > 0; }
+          else if (Array.isArray((data as any).tags)) { hasModels = (data as any).tags.length > 0; }
+          if (hasModels) break;
+        } catch {}
+      }
+      setLocalAvailability(prev => ({ ...prev, [preset.id]: hasModels }));
+    } catch {
+      setLocalAvailability(prev => ({ ...prev, [preset.id]: false }));
+    }
+  };
+
+  useEffect(() => {
+    if (!showAddProviderModal || addProviderStep !== 'select') return;
+    // Probe local presets in the background
+    PROVIDER_PRESETS.filter(isLocalPreset).forEach((p) => {
+      checkLocalPreset(p);
+    });
+  }, [showAddProviderModal, addProviderStep]);
+
+  const displayedPresets = [...filteredPresets].sort((a, b) => {
+    const aLocal = isLocalPreset(a);
+    const bLocal = isLocalPreset(b);
+    const aUp = aLocal && localAvailability[a.id] === true;
+    const bUp = bLocal && localAvailability[b.id] === true;
+    if (aUp !== bUp) return aUp ? -1 : 1; // running locals first
+    return a.label.localeCompare(b.label);
+  });
+
+  const handleSelectPreset = (preset: ProviderPreset) => {
+    setNewProviderForm(prev => ({
+      ...prev,
+      type: preset.type,
+      name: preset.label,
+      baseUrl: preset.baseUrl,
+      apiKey: preset.type === 'ollama' ? 'ollama' : prev.apiKey
+    }));
+  };
 
   // Add enhanced service status state
   const [enhancedServiceStatus, setEnhancedServiceStatus] = useState<any>({});
@@ -964,6 +1105,11 @@ const Settings = () => {
 
   // Provider management functions
   const handleAddProvider = async () => {
+    // Block Anthropic's API (not supported)
+    if (newProviderForm.baseUrl.trim().toLowerCase().startsWith('https://api.anthropic.com/')) {
+      alert('Anthropic API is not supported via OpenAI-compatible interface. Please choose a different provider.');
+      return;
+    }
     try {
       await addProvider({
         name: newProviderForm.name,
@@ -1006,6 +1152,12 @@ const Settings = () => {
 
   const handleUpdateProvider = async () => {
     if (!editingProvider) return;
+
+    // Block Anthropic's API (not supported)
+    if (newProviderForm.baseUrl.trim().toLowerCase().startsWith('https://api.anthropic.com/')) {
+      alert('Anthropic API is not supported via OpenAI-compatible interface. Please choose a different provider.');
+      return;
+    }
 
     try {
       await updateProvider(editingProvider.id, {
@@ -1096,20 +1248,7 @@ const Settings = () => {
     }
   };
 
-  const getDefaultProviderConfig = (type: Provider['type']) => {
-    switch (type) {
-      case 'openai':
-        return { baseUrl: 'https://api.openai.com/v1', name: 'OpenAI' };
-      case 'openrouter':
-        return { baseUrl: 'https://openrouter.ai/api/v1', name: 'OpenRouter' };
-      case 'ollama':
-        return { baseUrl: 'http://localhost:11434/v1', name: 'Ollama' };
-      case 'claras-pocket':
-        return { baseUrl: 'http://localhost:8091/v1', name: "Clara's Core" };
-      default:
-        return { baseUrl: '', name: '' };
-    }
-  };
+  // Note: default provider config is handled via presets UI above
 
   // Auto-detect Ollama installation
   const detectOllamaInstallation = async () => {
@@ -3995,103 +4134,176 @@ const ProcessButton = () => {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Provider Type
-                </label>
-                <select
-                  value={newProviderForm.type}
-                  onChange={(e) => {
-                    const type = e.target.value as Provider['type'];
-                    const defaultConfig = getDefaultProviderConfig(type);
-                    setNewProviderForm(prev => ({
-                      ...prev,
-                      type,
-                      name: defaultConfig.name || prev.name,
-                      baseUrl: defaultConfig.baseUrl || prev.baseUrl,
-                      apiKey: type === 'ollama' ? 'ollama' : prev.apiKey
-                    }));
-                  }}
-                  className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="ollama">Ollama</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
+              {addProviderStep === 'select' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Choose a Provider</label>
+                  <div className="relative mb-3">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={providerSearchQuery}
+                      onChange={(e) => setProviderSearchQuery(e.target.value)}
+                      placeholder="Search providers (OpenAI, Groq, Gemini, Mistral, …)"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    />
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                    {/* Custom first */}
+                    <button
+                      type="button"
+                      onClick={() => { setNewProviderForm(prev => ({ ...prev, type: 'openai_compatible', name: '', baseUrl: '' })); setAddProviderStep('configure'); }}
+                      className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
+                        !newProviderForm.baseUrl && !newProviderForm.name ? 'border-sakura-300 bg-sakura-50/60 dark:bg-sakura-500/10' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-md bg-white/70 dark:bg-gray-700 flex items-center justify-center">
+                        <Plus className="w-4 h-4 text-gray-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">Custom (Manual)</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">Enter name and base URL in next step</div>
+                      </div>
+                    </button>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Provider Name
-                </label>
-                <input
-                  type="text"
-                  value={newProviderForm.name}
-                  onChange={(e) => setNewProviderForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                  placeholder="Enter provider name"
-                />
-              </div>
+                    {displayedPresets.map((preset) => {
+                      const isSelected = newProviderForm.baseUrl === preset.baseUrl || newProviderForm.name === preset.label;
+                      const brandHost = preset.brandDomain || getHostnameFromUrl(preset.baseUrl);
+                      const baseHost = getHostnameFromUrl(preset.baseUrl);
+                      const isLocalBase = baseHost === 'localhost' || baseHost.startsWith('127.');
+                      const primaryFavicon = isLocalBase ? '' : getDDGFaviconUrl(brandHost);
+                      const isUp = isLocalBase && localAvailability[preset.id] === true;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => { handleSelectPreset(preset); setAddProviderStep('configure'); }}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
+                            isSelected
+                              ? 'border-sakura-300 bg-sakura-50/60 dark:bg-sakura-500/10'
+                              : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50'
+                          }`}
+                        >
+                          <div className="relative w-7 h-7 rounded-md overflow-hidden bg-white/70 dark:bg-gray-700 flex items-center justify-center">
+                            {primaryFavicon ? (
+                              <img
+                                src={primaryFavicon}
+                                alt=""
+                                className="relative z-10 w-5 h-5"
+                                onError={(e) => {
+                                  const img = e.currentTarget as HTMLImageElement;
+                                  const current = img.src;
+                                  const ddgHost = 'icons.duckduckgo.com';
+                                  if (current.includes(ddgHost)) {
+                                    img.src = getS2FaviconUrl(brandHost);
+                                  } else {
+                                    img.style.display = 'none';
+                                  }
+                                }}
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              isLocalBase ? (
+                                <Server className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <Globe className="w-4 h-4 text-gray-500" />
+                              )
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{preset.label}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{preset.baseUrl}</div>
+                          </div>
+                          {isUp && (
+                            <span className="ml-auto inline-flex items-center">
+                              <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => setAddProviderStep('select')}
+                    className="-mt-2 -ml-2 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    <ChevronLeft className="w-3 h-3" /> Back
+                  </button>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Base URL
-                </label>
-                <input
-                  type="url"
-                  value={newProviderForm.baseUrl}
-                  onChange={(e) => setNewProviderForm(prev => ({ ...prev, baseUrl: e.target.value }))}
-                  className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                  placeholder="https://api.example.com/v1"
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provider Name</label>
+                    <input
+                      type="text"
+                      value={newProviderForm.name}
+                      onChange={(e) => setNewProviderForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      placeholder="Enter provider name"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  value={newProviderForm.apiKey}
-                  onChange={(e) => setNewProviderForm(prev => ({ ...prev, apiKey: e.target.value }))}
-                  className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                  placeholder="Enter API key (optional)"
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Base URL</label>
+                    <input
+                      type="url"
+                      value={newProviderForm.baseUrl}
+                      onChange={(e) => setNewProviderForm(prev => ({ ...prev, baseUrl: e.target.value }))}
+                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      placeholder="https://api.example.com/v1"
+                    />
+                    {newProviderForm.baseUrl.trim().toLowerCase().startsWith('https://api.anthropic.com/') && (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">Anthropic API is not supported here. Please use a different provider.</p>
+                    )}
+                  </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isEnabled"
-                  checked={newProviderForm.isEnabled}
-                  onChange={(e) => setNewProviderForm(prev => ({ ...prev, isEnabled: e.target.checked }))}
-                  className="w-4 h-4 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
-                />
-                <label htmlFor="isEnabled" className="text-sm text-gray-700 dark:text-gray-300">
-                  Enable this provider
-                </label>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                    <input
+                      type="password"
+                      value={newProviderForm.apiKey}
+                      onChange={(e) => setNewProviderForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      placeholder="Enter API key (optional)"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isEnabled"
+                      checked={newProviderForm.isEnabled}
+                      onChange={(e) => setNewProviderForm(prev => ({ ...prev, isEnabled: e.target.checked }))}
+                      className="w-4 h-4 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <label htmlFor="isEnabled" className="text-sm text-gray-700 dark:text-gray-300">Enable this provider</label>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => {
+                  if (addProviderStep === 'configure' && !editingProvider) { setAddProviderStep('select'); return; }
                   setShowAddProviderModal(false);
                   setEditingProvider(null);
                 }}
                 className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
-                Cancel
+                {addProviderStep === 'configure' && !editingProvider ? 'Back' : 'Cancel'}
               </button>
-              <button
-                onClick={editingProvider ? handleUpdateProvider : handleAddProvider}
-                disabled={!newProviderForm.name.trim()}
-                className="flex-1 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                {editingProvider ? 'Update' : 'Add'} Provider
-              </button>
+              {addProviderStep === 'configure' && (
+                <button
+                  onClick={editingProvider ? handleUpdateProvider : handleAddProvider}
+                  disabled={!newProviderForm.name.trim() || newProviderForm.baseUrl.trim().toLowerCase().startsWith('https://api.anthropic.com/')}
+                  className="flex-1 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  {editingProvider ? 'Update' : 'Add'} Provider
+                </button>
+              )}
             </div>
           </div>
         </div>
