@@ -87,13 +87,21 @@ export class FlowExecutor {
       const executedNodes = new Set<string>();
       
       // Find input nodes and set their values
-      const inputNodes = nodes.filter(node => node.type === 'input');
+      const inputNodes = nodes.filter(node => 
+        node.type === 'input' || 
+        node.type === 'image-input' || 
+        node.type === 'pdf-input' || 
+        node.type === 'file-upload'
+      );
       
+      // Store input values for access during node execution, but don't pre-execute input nodes
+      const providedInputs = new Map<string, any>();
       for (const inputNode of inputNodes) {
         const inputValue = inputs[inputNode.name] || inputs[inputNode.id] || inputNode.data?.value;
-        nodeOutputs.set(inputNode.id, { output: inputValue });
-        executedNodes.add(inputNode.id);
-        this.addLog('info', `Input node ${inputNode.name}: ${inputValue}`, undefined, inputNode.id, inputNode.name);
+        if (inputValue !== undefined) {
+          providedInputs.set(inputNode.id, inputValue);
+        }
+        this.addLog('info', `Input available for node ${inputNode.name}: ${inputValue}`, undefined, inputNode.id, inputNode.name);
       }
       
       // Execute nodes in dependency order
@@ -108,7 +116,12 @@ export class FlowExecutor {
         
         try {
           // Get inputs for this node
-          const nodeInputs = this.getNodeInputs(node, connections, nodeOutputs);
+          let nodeInputs = this.getNodeInputs(node, connections, nodeOutputs);
+          
+          // For input nodes, inject the provided input value
+          if (inputNodes.some(inputNode => inputNode.id === node.id) && providedInputs.has(node.id)) {
+            nodeInputs = { input: providedInputs.get(node.id), ...nodeInputs };
+          }
           
           // Create execution context
           const context: ExecutionContext = {

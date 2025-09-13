@@ -44,6 +44,7 @@ import StaticTextNode from '../Nodes/StaticTextNode';
 import AgentExecutorNode from '../Nodes/AgentExecutorNode';
 import { ComfyUIImageGenNode } from '../Nodes/ComfyUIImageGenNode';
 import NotebookWriterNode from '../Nodes/NotebookWriterNode';
+import NotebookChatNode from '../Nodes/NotebookChatNode';
 
 // Debug: Log successful imports
 console.log('Node imports loaded:', {
@@ -64,6 +65,8 @@ console.log('Node imports loaded:', {
   APIRequestNode: !!APIRequestNode,
   StaticTextNode: !!StaticTextNode,
   AgentExecutorNode: !!AgentExecutorNode,
+  NotebookWriterNode: !!NotebookWriterNode,
+  NotebookChatNode: !!NotebookChatNode,
 });
 
 // Define base node types with proper imports - moved outside component to ensure immediate availability
@@ -88,6 +91,7 @@ const baseNodeTypes: NodeTypes = {
   'comfyui-image-gen': ComfyUIImageGenNode,
   'text-to-speech': TextToSpeechNode,
   'notebook-writer': NotebookWriterNode,
+  'notebook-chat': NotebookChatNode,
 };
 
 // Debug: Log base node types immediately after definition

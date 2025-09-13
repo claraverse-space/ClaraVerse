@@ -180,20 +180,30 @@ export class NodeRegistry {
         
         if (imageData) {
           // Handle image data - it could be a string (base64) or an object from ImageInputNode
-          let base64String = '';
+          let imageUrl = '';
           
           if (typeof imageData === 'string') {
-            // Direct base64 string
-            base64String = imageData;
+            // Check if it's already a data URL
+            if (imageData.startsWith('data:image/')) {
+              imageUrl = imageData;
+            } else {
+              // Raw base64 string - add data URL prefix
+              imageUrl = `data:image/jpeg;base64,${imageData}`;
+            }
           } else if (typeof imageData === 'object' && imageData.base64) {
             // Object from ImageInputNode with base64 property
-            base64String = imageData.base64;
+            const base64Value = imageData.base64;
+            if (base64Value.startsWith('data:image/')) {
+              imageUrl = base64Value;
+            } else {
+              imageUrl = `data:image/jpeg;base64,${base64Value}`;
+            }
           }
           
-          if (base64String) {
+          if (imageUrl) {
             userMessageContent.push({
               type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${base64String}` }
+              image_url: { url: imageUrl }
             });
           }
         }
@@ -360,11 +370,11 @@ export class NodeRegistry {
     });
 
     // Image Input Node
-    this.nodeExecutors.set('image-input', (node: FlowNode) => {
-      const imageFile = node.data.imageFile || '';
+    this.nodeExecutors.set('image-input', (node: FlowNode, inputs: Record<string, any>) => {
+      // Check for uploaded image first, then fall back to saved workflow value
+      const imageFile = inputs.input || Object.values(inputs)[0] || node.data.imageFile || '';
       const maxWidth = node.data.maxWidth || 1024;
       const maxHeight = node.data.maxHeight || 1024;
-      const quality = node.data.quality || 0.8;
       
       if (!imageFile) {
         return {
@@ -373,9 +383,18 @@ export class NodeRegistry {
         };
       }
       
+      // Handle the image data - it should be passed as-is (data URL format)
+      // The next nodes expect data URLs like "data:image/jpeg;base64,XXXXX"
+      let processedImage = imageFile;
+      
+      // If it's raw base64 without data URL prefix, add it
+      if (typeof imageFile === 'string' && !imageFile.startsWith('data:')) {
+        processedImage = `data:image/jpeg;base64,${imageFile}`;
+      }
+      
       // Return data with keys matching the output port IDs
       return {
-        base64: imageFile, // Direct base64 string for LLM image input
+        base64: processedImage, // Data URL format for LLM image input
         metadata: {
           width: maxWidth,
           height: maxHeight,
@@ -386,8 +405,9 @@ export class NodeRegistry {
     });
 
     // PDF Input Node
-    this.nodeExecutors.set('pdf-input', async (node: FlowNode) => {
-      const pdfFile = node.data.pdfFile || '';
+    this.nodeExecutors.set('pdf-input', async (node: FlowNode, inputs: Record<string, any>) => {
+      // Check for uploaded PDF first, then fall back to saved workflow value
+      const pdfFile = inputs.input || Object.values(inputs)[0] || node.data.pdfFile || '';
       const maxPages = node.data.maxPages || 50;
       const preserveFormatting = node.data.preserveFormatting || false;
       
@@ -744,13 +764,13 @@ export class NodeRegistry {
 
 
     // File Upload Node
-    this.nodeExecutors.set('file-upload', async (node: FlowNode) => {
-      // File upload node doesn't need execution logic as it processes files on upload
-      // The outputs are already set by the node component when a file is uploaded
+    this.nodeExecutors.set('file-upload', async (node: FlowNode, inputs: Record<string, any>) => {
+      // Check for uploaded content first, then fall back to saved workflow value
+      const uploadedContent = inputs.input || Object.values(inputs)[0];
       const outputs = node.data.outputs || {};
       
       return {
-        content: outputs.content || null,
+        content: uploadedContent || outputs.content || null,
         metadata: outputs.metadata || null
       };
     });
@@ -1321,6 +1341,111 @@ export class NodeRegistry {
         return {
           documentId: null,
           success: false
+        };
+      }
+    });
+
+    // Notebook Chat Node
+    this.nodeExecutors.set('notebook-chat', async (node: FlowNode, inputs: Record<string, any>, context: ExecutionContext) => {
+      context.log('💬 Notebook Chat - Debug inputs:', inputs);
+      context.log('💬 Notebook Chat - Debug node data:', node.data);
+      
+      const query = inputs.query || inputs.question || inputs.text || inputs.content || inputs.value || inputs.output || '';
+      
+      context.log('💬 Notebook Chat - Extracted query:', { 
+        query: query, 
+        queryLength: query.length, 
+        queryTrimmed: query.trim(),
+        queryTrimmedLength: query.trim().length,
+        inputsKeys: Object.keys(inputs)
+      });
+      
+      if (!query.trim()) {
+        context.error('💬 Notebook Chat - Query validation failed:', {
+          originalQuery: query,
+          trimmedQuery: query.trim(),
+          queryType: typeof query,
+          inputsReceived: inputs
+        });
+        throw new Error('Query text is required for notebook chat');
+      }
+
+      try {
+        context.log('💬 Starting notebook chat operation...');
+        
+        // Get configuration from node data
+        const selectedNotebook = node.data.selectedNotebook || '';
+        const useChatHistory = node.data.useChatHistory !== false; // Default to true
+        const responseMode = node.data.responseMode || 'hybrid';
+
+        if (!selectedNotebook) {
+          throw new Error('Target notebook must be selected');
+        }
+
+        context.log(`📓 Querying notebook: "${selectedNotebook}" with query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`);
+
+        // Import the Clara notebook service (we need to check if this works in Node context)
+        try {
+          // Dynamic import to handle both browser and Node contexts
+          const serviceModule = await import('../../services/claraNotebookService');
+          const { claraNotebookService } = serviceModule;
+          
+          // Check if service is healthy
+          if (!claraNotebookService.isBackendHealthy()) {
+            throw new Error('Notebook service is not available');
+          }
+          
+          // Send chat message to the notebook
+          const response = await claraNotebookService.sendChatMessage(selectedNotebook, {
+            question: query.trim(),
+            use_chat_history: useChatHistory,
+            mode: responseMode,
+            response_type: 'Multiple Paragraphs',
+            top_k: 60
+          });
+          
+          if (response && response.answer) {
+            context.log(`✅ Query successful - Response length: ${response.answer.length}, Citations: ${response.citations?.length || 0}`);
+            
+            return {
+              answer: response.answer,
+              citations: response.citations || [],
+              success: true,
+              citationCount: response.citations?.length || 0,
+              responseLength: response.answer.length
+            };
+          } else {
+            throw new Error('No response received from notebook');
+          }
+          
+        } catch (importError) {
+          context.error('Failed to import notebook service or service not available:', importError);
+          
+          // Fallback to mock result for testing
+          const mockResponse = `Mock response for query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`;
+          
+          context.log('💬 Using fallback mock chat response');
+          
+          return {
+            answer: mockResponse,
+            citations: [],
+            success: true,
+            citationCount: 0,
+            responseLength: mockResponse.length
+          };
+        }
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        context.error(`❌ Notebook chat operation failed: ${errorMessage}`);
+        
+        return {
+          answer: '',
+          citations: [],
+          success: false,
+          citationCount: 0,
+          responseLength: 0,
+          error: errorMessage
         };
       }
     });

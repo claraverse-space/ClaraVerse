@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Play, Save, Download, Upload, Settings, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout, Check, Edit } from 'lucide-react';
+import { Plus, Play, Save, Download, Upload, Settings, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout, Check, Edit, FileInput, FileOutput, Image, FileText, FolderOpen, BookOpen, MessageSquare, Palette, Brain, BarChart3, Mic, Volume2, Type, Link, Wrench, Globe, GitBranch } from 'lucide-react';
 import { AgentBuilderProvider, useAgentBuilder } from '../contexts/AgentBuilder/AgentBuilderContext';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -658,7 +658,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'Input', 
                             type: 'input', 
-                            icon: '📥', 
+                            icon: <FileInput className="w-4 h-4" />, 
                             description: 'Text, JSON, or number input', 
                             color: 'bg-green-500',
                             features: ['Multi-type support', 'Configurable labels']
@@ -666,7 +666,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'Output', 
                             type: 'output', 
-                            icon: '📤', 
+                            icon: <FileOutput className="w-4 h-4" />, 
                             description: 'Display results with formatting', 
                             color: 'bg-red-500',
                             features: ['Multiple formats', 'Auto-formatting']
@@ -674,7 +674,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'Image Input', 
                             type: 'image-input', 
-                            icon: '🖼️', 
+                            icon: <Image className="w-4 h-4" />, 
                             description: 'Upload images as base64', 
                             color: 'bg-pink-500',
                             features: ['Auto-resize', 'Base64 output']
@@ -682,27 +682,26 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'Load PDF', 
                             type: 'pdf-input', 
-                            icon: '📄', 
+                            icon: <FileText className="w-4 h-4" />, 
                             description: 'Upload PDF and extract text content', 
                             color: 'bg-blue-500',
                             features: ['Text extraction', 'Multi-page support']
                           },
-
                           { 
                             name: 'File Upload', 
                             type: 'file-upload', 
-                            icon: '📁', 
+                            icon: <FolderOpen className="w-4 h-4" />, 
                             description: 'Upload any file with configurable output formats', 
                             color: 'bg-indigo-500',
                             features: ['Universal support', 'Multiple formats', 'Size validation']
                           },
                         ].map((node) => (
-                                                      <div
-                              key={node.name}
-                              className="group p-4 glassmorphic-card rounded-xl hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
-                              draggable
-                              onDragStart={(e) => onDragStart(e, node.type)}
-                            >
+                          <div
+                            key={node.name}
+                            className="group p-4 glassmorphic-card rounded-xl hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, node.type)}
+                          >
                             <div className="flex items-start gap-3">
                               <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform`}>
                                 {node.icon}
@@ -728,6 +727,238 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                       </div>
                     </div>
 
+                    {/* Notebook Nodes */}
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"></span>
+                        Notebook Operations
+                      </h3>
+                      <div className="space-y-2">
+                        {[
+                          { 
+                            name: 'Notebook Writer', 
+                            type: 'notebook-writer', 
+                            icon: <BookOpen className="w-4 h-4" />, 
+                            description: 'Write text content to Clara notebooks for document management', 
+                            color: 'bg-gradient-to-r from-amber-500 to-orange-500',
+                            features: ['Auto titles', 'Multiple formats', 'Append mode', 'Document storage']
+                          },
+                          { 
+                            name: 'Notebook Chat', 
+                            type: 'notebook-chat', 
+                            icon: <MessageSquare className="w-4 h-4" />, 
+                            description: 'Send chat queries to Clara notebooks and get AI responses', 
+                            color: 'bg-gradient-to-r from-purple-500 to-indigo-500',
+                            features: ['Notebook selection', 'Chat mode', 'AI responses', 'Context aware']
+                          },
+                        ].map((node) => (
+                          <div
+                            key={node.name}
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-amber-300 dark:hover:border-amber-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, node.type)}
+                          >
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-amber-100 to-transparent dark:from-amber-900/30 rounded-bl-full opacity-50"></div>
+                            <div className="flex items-start gap-3 relative">
+                              <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform shadow-lg`}>
+                                {node.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+                                  {node.name}
+                                  <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full font-medium">📔</span>
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">
+                                  {node.description}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {node.features.map((feature, idx) => (
+                                    <span key={idx} className="text-xs px-2 py-0.5 bg-gradient-to-r from-amber-100 to-orange-100 dark:from-amber-900/50 dark:to-orange-900/50 text-amber-700 dark:text-amber-300 rounded-full">
+                                      {feature}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Image Generation */}
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse"></span>
+                        Image Generation
+                      </h3>
+                      <div className="space-y-2">
+                        {[
+                          { 
+                            name: 'ComfyUI Image Generator', 
+                            type: 'comfyui-image-gen', 
+                            icon: <Palette className="w-4 h-4" />, 
+                            description: 'Generate high-quality images using ComfyUI with customizable parameters', 
+                            color: 'bg-gradient-to-r from-purple-500 to-pink-500',
+                            features: ['Model selection', 'Custom parameters', 'Multiple resolutions', 'Progress tracking']
+                          },
+                        ].map((node) => (
+                          <div
+                            key={node.name}
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-purple-300 dark:hover:border-purple-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, node.type)}
+                          >
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-purple-100 to-transparent dark:from-purple-900/30 rounded-bl-full opacity-50"></div>
+                            <div className="flex items-start gap-3 relative">
+                              <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform shadow-lg`}>
+                                {node.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+                                  {node.name}
+                                  <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full font-medium">🖼️</span>
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">
+                                  {node.description}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {node.features.map((feature, idx) => (
+                                    <span key={idx} className="text-xs px-2 py-0.5 bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/50 dark:to-pink-900/50 text-purple-700 dark:text-purple-300 rounded-full">
+                                      {feature}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Clara Assistant & AI Agents */}
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full animate-pulse"></span>
+                        Clara Assistant & AI Agents
+                      </h3>
+                      <div className="space-y-2">
+                        {[
+                          { 
+                            name: 'Agent Executor', 
+                            type: 'agent-executor', 
+                            icon: <Zap className="w-4 h-4" />, 
+                            description: 'Autonomous AI agent with MCP tool access and multi-step execution', 
+                            color: 'bg-gradient-to-r from-emerald-500 to-teal-500',
+                            features: ['Autonomous mode', 'MCP tools', 'Multi-provider', 'Self-correction', 'Chain of thought']
+                          },
+                          { 
+                            name: 'LLM Chat', 
+                            type: 'llm', 
+                            icon: <Brain className="w-4 h-4" />, 
+                            description: 'Large Language Model interface with Clara Assistant integration', 
+                            color: 'bg-gradient-to-r from-sakura-500 to-pink-500',
+                            features: ['Multi-model support', 'Image input', 'Memory integration', 'Clara Assistant']
+                          },
+                          { 
+                            name: 'Structured LLM', 
+                            type: 'structured-llm', 
+                            icon: <BarChart3 className="w-4 h-4" />, 
+                            description: 'Generate structured JSON with any OpenAI-compatible API', 
+                            color: 'bg-gradient-to-r from-indigo-500 to-purple-500',
+                            features: ['Universal API support', 'Auto-fallback', 'JSON validation', 'Ollama compatible']
+                          },
+                        ].map((node) => (
+                          <div
+                            key={node.name}
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-emerald-300 dark:hover:border-emerald-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, node.type)}
+                          >
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-emerald-100 to-transparent dark:from-emerald-900/30 rounded-bl-full opacity-50"></div>
+                            <div className="flex items-start gap-3 relative">
+                              <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform shadow-lg`}>
+                                {node.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+                                  {node.name}
+                                  <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full font-medium">🤖</span>
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">
+                                  {node.description}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {node.features.map((feature, idx) => (
+                                    <span key={idx} className="text-xs px-2 py-0.5 bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 text-emerald-700 dark:text-emerald-300 rounded-full">
+                                      {feature}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Audio Processing */}
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full"></span>
+                        Audio Processing
+                      </h3>
+                      <div className="space-y-2">
+                        {[
+                          { 
+                            name: 'Whisper Transcription', 
+                            type: 'whisper-transcription', 
+                            icon: <Mic className="w-4 h-4" />, 
+                            description: 'Transcribe binary audio data using OpenAI Whisper', 
+                            color: 'bg-gradient-to-r from-teal-500 to-cyan-500',
+                            features: ['Binary input', 'Multi-format', 'High accuracy', 'Language detection']
+                          },
+                          { 
+                            name: 'Text to Speech', 
+                            type: 'text-to-speech', 
+                            icon: <Volume2 className="w-4 h-4" />, 
+                            description: 'Convert text to speech with multiple engine options', 
+                            color: 'bg-gradient-to-r from-orange-500 to-red-500',
+                            features: ['Multiple engines', 'Voice selection', 'Speed control', 'Quality options']
+                          },
+                        ].map((node) => (
+                          <div
+                            key={node.name}
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-teal-300 dark:hover:border-teal-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+                            draggable
+                            onDragStart={(e) => onDragStart(e, node.type)}
+                          >
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-teal-100 to-transparent dark:from-teal-900/30 rounded-bl-full opacity-50"></div>
+                            <div className="flex items-start gap-3 relative">
+                              <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform shadow-lg`}>
+                                {node.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+                                  {node.name}
+                                  <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-teal-500 to-cyan-500 text-white rounded-full font-medium">🎵</span>
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">
+                                  {node.description}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {node.features.map((feature, idx) => (
+                                    <span key={idx} className="text-xs px-2 py-0.5 bg-gradient-to-r from-teal-100 to-cyan-100 dark:from-teal-900/50 dark:to-cyan-900/50 text-teal-700 dark:text-teal-300 rounded-full">
+                                      {feature}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Data Processing */}
                     <div>
                       <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -739,7 +970,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'Static Text', 
                             type: 'static-text', 
-                            icon: '📝', 
+                            icon: <Type className="w-4 h-4" />, 
                             description: 'Provides fixed text content set during workflow creation', 
                             color: 'bg-gray-500',
                             features: ['Fixed content', 'Multiple formats', 'Template support', 'Prompt building']
@@ -747,7 +978,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'Combine Text', 
                             type: 'combine-text', 
-                            icon: '🔗', 
+                            icon: <Link className="w-4 h-4" />, 
                             description: 'Combine two text inputs with configurable separation for prompt building', 
                             color: 'bg-indigo-500',
                             features: ['Multiple modes', 'Custom separators', 'Prompt building', 'Space control']
@@ -755,7 +986,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'JSON Parser', 
                             type: 'json-parse', 
-                            icon: '🔧', 
+                            icon: <Wrench className="w-4 h-4" />, 
                             description: 'Parse JSON and extract fields', 
                             color: 'bg-blue-500',
                             features: ['Dot notation', 'Error handling', 'Field extraction']
@@ -763,18 +994,10 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'API Request', 
                             type: 'api-request', 
-                            icon: '🌐', 
+                            icon: <Globe className="w-4 h-4" />, 
                             description: 'Production-grade HTTP/REST API client', 
                             color: 'bg-gradient-to-r from-green-500 to-teal-500',
                             features: ['All HTTP methods', 'Auth support', 'Auto retries', 'Response parsing']
-                          },
-                          { 
-                            name: 'Notebook Writer', 
-                            type: 'notebook-writer', 
-                            icon: '📓', 
-                            description: 'Write text content to Clara notebooks for document management', 
-                            color: 'bg-gradient-to-r from-amber-500 to-orange-500',
-                            features: ['Auto titles', 'Multiple formats', 'Append mode', 'Document storage']
                           },
                         ].map((node) => (
                           <div
@@ -819,7 +1042,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           { 
                             name: 'If/Else', 
                             type: 'if-else', 
-                            icon: '🔀', 
+                            icon: <GitBranch className="w-4 h-4" />, 
                             description: 'Conditional logic with expressions', 
                             color: 'bg-purple-500',
                             features: ['JavaScript expressions', 'Dual outputs', 'Variable support']
@@ -845,96 +1068,6 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                                 <div className="flex flex-wrap gap-1">
                                   {node.features.map((feature, idx) => (
                                     <span key={idx} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full">
-                                      {feature}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* AI & Intelligence */}
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                        <span className="w-2 h-2 bg-gradient-to-r from-sakura-500 to-pink-500 rounded-full animate-pulse"></span>
-                        AI & Intelligence
-                      </h3>
-                      <div className="space-y-2">
-                        {[
-                          { 
-                            name: 'LLM Chat', 
-                            type: 'llm', 
-                            icon: '🧠', 
-                            description: 'Large Language Model interface', 
-                            color: 'bg-gradient-to-r from-sakura-500 to-pink-500',
-                            features: ['Multi-model support', 'Image input', 'Memory integration']
-                          },
-                          { 
-                            name: 'Structured LLM', 
-                            type: 'structured-llm', 
-                            icon: '📊', 
-                            description: 'Generate structured JSON with any OpenAI-compatible API', 
-                            color: 'bg-gradient-to-r from-purple-500 to-indigo-500',
-                            features: ['Universal API support', 'Auto-fallback', 'JSON validation', 'Ollama compatible']
-                          },
-                          { 
-                            name: 'ComfyUI Image Generator', 
-                            type: 'comfyui-image-gen', 
-                            icon: '🎨', 
-                            description: 'Generate high-quality images using ComfyUI with customizable parameters', 
-                            color: 'bg-gradient-to-r from-purple-500 to-pink-500',
-                            features: ['Model selection', 'Custom parameters', 'Multiple resolutions', 'Progress tracking']
-                          },
-                          { 
-                            name: 'Agent Executor', 
-                            type: 'agent-executor', 
-                            icon: '🤖', 
-                            description: 'Autonomous AI agent with MCP tool access and multi-step execution', 
-                            color: 'bg-gradient-to-r from-emerald-500 to-teal-500',
-                            features: ['Autonomous mode', 'MCP tools', 'Multi-provider', 'Self-correction', 'Chain of thought']
-                          },
-                          { 
-                            name: 'Whisper Transcription', 
-                            type: 'whisper-transcription', 
-                            icon: '🎙️', 
-                            description: 'Transcribe binary audio data using OpenAI Whisper', 
-                            color: 'bg-gradient-to-r from-teal-500 to-cyan-500',
-                            features: ['Binary input', 'Multi-format', 'High accuracy', 'Language detection']
-                          },
-                          { 
-                            name: 'Text to Speech', 
-                            type: 'text-to-speech', 
-                            icon: '🔊', 
-                            description: 'Convert text to speech with multiple engine options', 
-                            color: 'bg-gradient-to-r from-orange-500 to-red-500',
-                            features: ['Multiple engines', 'Voice selection', 'Speed control', 'Quality options']
-                          },
-                        ].map((node) => (
-                          <div
-                            key={node.name}
-                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
-                            draggable
-                            onDragStart={(e) => onDragStart(e, node.type)}
-                          >
-                            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-sakura-100 to-transparent dark:from-sakura-900/30 rounded-bl-full opacity-50"></div>
-                            <div className="flex items-start gap-3 relative">
-                              <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform shadow-lg`}>
-                                {node.icon}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
-                                  {node.name}
-                                  <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-sakura-500 to-pink-500 text-white rounded-full font-medium">AI</span>
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">
-                                  {node.description}
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {node.features.map((feature, idx) => (
-                                    <span key={idx} className="text-xs px-2 py-0.5 bg-gradient-to-r from-sakura-100 to-pink-100 dark:from-sakura-900/50 dark:to-pink-900/50 text-sakura-700 dark:text-sakura-300 rounded-full">
                                       {feature}
                                     </span>
                                   ))}

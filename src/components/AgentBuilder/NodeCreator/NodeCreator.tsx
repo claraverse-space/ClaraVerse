@@ -10,6 +10,7 @@ import { CustomNodeDefinition, NodePort, NodePropertyDefinition } from '../../..
 import Monaco from '@monaco-editor/react';
 import { useProviders } from '../../../contexts/ProvidersContext';
 import { claraProviderService } from '../../../services/claraProviderService';
+import ResponsiveModal from '../ResponsiveModal';
 
 interface NodeCreatorProps {
   isOpen: boolean;
@@ -1740,20 +1741,19 @@ ${outputVariables}
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-            {editingNode ? 'Edit Node' : 'Create Custom Node'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-        </div>
+    <ResponsiveModal isOpen={isOpen} size="xl">
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+          {editingNode ? 'Edit Node' : 'Create Custom Node'}
+        </h2>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        >
+          <X className="w-5 h-5 text-gray-500" />
+        </button>
+      </div>
 
         {/* Step Indicator */}
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -2055,8 +2055,7 @@ ${outputVariables}
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </ResponsiveModal>
   );
 };
 

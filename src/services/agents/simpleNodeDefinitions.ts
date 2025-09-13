@@ -1653,6 +1653,118 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
       ],
       tags: ['notebook', 'document', 'text', 'write', 'storage']
     }
+  },
+
+  // NOTEBOOK CHAT NODE
+  {
+    id: 'notebook-chat-node',
+    name: 'Notebook Chat',
+    type: 'notebook-chat',
+    category: 'data',
+    description: 'Query existing Clara notebooks using AI chat and get intelligent responses with citations',
+    icon: 'message-square',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'query',
+        name: 'Query/Question',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'Question or query to ask the notebook'
+      }
+    ],
+    outputs: [
+      {
+        id: 'answer',
+        name: 'Answer',
+        type: 'output',
+        dataType: 'string',
+        description: 'AI-generated answer based on notebook content'
+      },
+      {
+        id: 'citations',
+        name: 'Citations',
+        type: 'output',
+        dataType: 'array',
+        description: 'Array of document citations that support the answer'
+      },
+      {
+        id: 'success',
+        name: 'Success',
+        type: 'output',
+        dataType: 'boolean',
+        description: 'Whether the query was successful'
+      },
+      {
+        id: 'citationCount',
+        name: 'Citation Count',
+        type: 'output',
+        dataType: 'number',
+        description: 'Number of citations found'
+      },
+      {
+        id: 'responseLength',
+        name: 'Response Length',
+        type: 'output',
+        dataType: 'number',
+        description: 'Length of the response in characters'
+      }
+    ],
+    properties: [
+      {
+        id: 'selectedNotebook',
+        name: 'Target Notebook',
+        type: 'select',
+        defaultValue: '',
+        options: [], // Will be populated dynamically from available notebooks
+        description: 'Select the notebook to query'
+      },
+      {
+        id: 'responseMode',
+        name: 'Response Mode',
+        type: 'select',
+        defaultValue: 'hybrid',
+        options: [
+          { label: 'Hybrid (Global + Local)', value: 'hybrid' },
+          { label: 'Global Knowledge', value: 'global' },
+          { label: 'Local Context', value: 'local' }
+        ],
+        description: 'How the AI should process the query'
+      },
+      {
+        id: 'useChatHistory',
+        name: 'Use Chat History',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Whether to use conversation history for context'
+      }
+    ],
+    executionHandler: 'notebook-chat-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'Ask Question',
+          description: 'Ask a question about notebook content',
+          config: {
+            selectedNotebook: 'my-notebook-id',
+            responseMode: 'hybrid',
+            useChatHistory: true
+          }
+        },
+        {
+          name: 'Quick Lookup',
+          description: 'Get specific information without chat history',
+          config: {
+            selectedNotebook: 'my-notebook-id',
+            responseMode: 'local',
+            useChatHistory: false
+          }
+        }
+      ],
+      tags: ['notebook', 'chat', 'query', 'ai', 'search', 'knowledge']
+    }
   }
 ];
 
