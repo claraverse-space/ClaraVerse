@@ -1843,6 +1843,37 @@ Now tell me what is the result "`;
           parseAndUpdateAgentStatus(chunk);
         }
 
+        // **NEW: Extract and process tool execution blocks**
+        if (chunk.includes('__TOOL_EXECUTION_BLOCK__')) {
+          const blockMatch = chunk.match(/__TOOL_EXECUTION_BLOCK__(.*?)__TOOL_EXECUTION_BLOCK__/s);
+          if (blockMatch) {
+            try {
+              const toolExecutionData = JSON.parse(blockMatch[1]);
+              console.log(`📦 Processing tool execution block with ${toolExecutionData.tools?.length || 0} tools`);
+              
+              // Store tool execution data in the message metadata
+              setMessages(prev => prev.map(msg => 
+                msg.id === streamingMessageId 
+                  ? { 
+                      ...msg, 
+                      metadata: {
+                        ...msg.metadata,
+                        toolExecutionBlock: toolExecutionData
+                      }
+                    }
+                  : msg
+              ));
+              
+              console.log(`✅ Tool execution block stored in message ${streamingMessageId} metadata`);
+              
+              // Don't add the raw tool execution block to the content
+              return;
+            } catch (error) {
+              console.error('Failed to parse tool execution block:', error);
+            }
+          }
+        }
+
         // Filter out ALL status messages from chat display when autonomous agent is active
         const isStatusMessage = enforcedConfig.autonomousAgent?.enabled && (
           chunk.includes('**AGENT_STATUS:') || 
@@ -1858,7 +1889,8 @@ Now tell me what is the result "`;
           chunk.includes('**Autonomous Agent') ||
           chunk.includes('**Planning') ||
           chunk.includes('**Executing') ||
-          chunk.includes('**Reflecting')
+          chunk.includes('**Reflecting') ||
+          chunk.includes('__TOOL_EXECUTION_BLOCK__') // Also filter out the raw block markers
         );
         
         // Only update message content if it's not a status message
@@ -1979,6 +2011,15 @@ Now tell me what is the result "`;
         }
       }
 
+      // **FIX: Preserve tool execution blocks from streaming message**
+      // Get the current streaming message to preserve any data added during streaming
+      const currentStreamingMessage = messages.find(msg => msg.id === streamingMessageId);
+      const preservedToolExecutionBlock = currentStreamingMessage?.metadata?.toolExecutionBlock;
+      
+      if (preservedToolExecutionBlock) {
+        console.log(`🔄 Preserving tool execution block with ${preservedToolExecutionBlock.tools?.length || 0} tools from streaming to final message`);
+      }
+
       // Replace the streaming message with the final message
       let finalMessage = { 
         ...aiMessage, 
@@ -1986,7 +2027,9 @@ Now tell me what is the result "`;
         metadata: {
           ...aiMessage.metadata,
           isStreaming: false, // Mark as complete
-          error: undefined // **CRITICAL FIX**: Clear any error metadata on successful completion
+          error: undefined, // **CRITICAL FIX**: Clear any error metadata on successful completion
+          // **NEW: Preserve tool execution blocks from streaming**
+          ...(preservedToolExecutionBlock && { toolExecutionBlock: preservedToolExecutionBlock })
         }
       };
 

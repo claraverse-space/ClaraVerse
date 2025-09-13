@@ -50,6 +50,7 @@ import {
 } from '../../types/clara_assistant_types';
 
 import MessageContentRenderer from './MessageContentRenderer';
+import ToolExecutionBlock from './ToolExecutionBlock';
 
 import { copyToClipboard } from '../../utils/clipboard';
 import { useSmoothScroll } from '../../hooks/useSmoothScroll';
@@ -1273,6 +1274,16 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
               isStreaming={isThinkingStreaming}
               isComplete={isThinkingComplete}
             />
+          )}
+
+          {/* **NEW: Tool Execution Block for agent mode */}
+          {isAssistant && message.metadata?.toolExecutionBlock && (
+            <div className="mb-4">
+              <ToolExecutionBlock
+                data={message.metadata.toolExecutionBlock}
+                className="tool-execution-in-message"
+              />
+            </div>
           )}
 
           {/* Show response content */}

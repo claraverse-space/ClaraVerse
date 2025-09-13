@@ -67,6 +67,54 @@ export class ClaraAgentService {
   }
 
   /**
+   * Generate a concise summary for tool execution
+   */
+  private generateToolSummary(toolName: string, result: any): string {
+    if (!result || !result.success) {
+      return result?.error || 'Tool execution failed';
+    }
+
+    // Generate tool-specific summaries
+    switch (toolName.toLowerCase()) {
+      case 'create_file':
+      case 'save_file':
+        return `Created file successfully`;
+      
+      case 'read_file':
+      case 'load_file':
+        const content = result.result;
+        const lines = typeof content === 'string' ? content.split('\n').length : 0;
+        return `Read file (${lines} lines)`;
+      
+      case 'list_files':
+      case 'list_dir':
+        const items = Array.isArray(result.result) ? result.result.length : 0;
+        return `Found ${items} items`;
+      
+      case 'search':
+      case 'web_search':
+        return `Search completed successfully`;
+      
+      case 'fetch_content':
+      case 'fetch_webpage':
+        return `Content fetched successfully`;
+      
+      case 'run_command':
+      case 'execute':
+        return `Command executed successfully`;
+      
+      default:
+        // Generic summary for unknown tools
+        if (typeof result.result === 'string') {
+          return result.result.length > 50 
+            ? `${result.result.substring(0, 50)}...` 
+            : result.result;
+        }
+        return 'Tool executed successfully';
+    }
+  }
+
+  /**
    * Execute autonomous agent workflow
    */
   public async executeAutonomousAgent(
@@ -418,6 +466,22 @@ export class ClaraAgentService {
           autonomousMode: true,
           structuredToolCalling: true,
           memorySessionId: sessionId,
+          // **NEW: Add tool execution blocks for UI display**
+          ...(allToolResults.length > 0 && {
+            toolExecutionBlock: {
+              type: 'tool_execution_block',
+              tools: allToolResults.map((result, index) => ({
+                id: `tool-${index}`,
+                name: result.toolName,
+                arguments: result.metadata?.arguments || {},
+                success: result.success,
+                result: result.result,
+                error: result.error,
+                executionTime: result.executionTime || 'N/A',
+                summary: this.generateToolSummary(result.toolName, result)
+              }))
+            }
+          }),
           // Token validation metadata for UI display
           tokenValidation: tokenValidation ? {
             finalTokens: tokenValidation.finalTokens,
@@ -736,6 +800,22 @@ export class ClaraAgentService {
           agentSteps: Math.min(autonomousConfig.maxIterations, allToolResults.length / 2 + 1),
           autonomousMode: true,
           memorySessionId: sessionId,
+          // **NEW: Add tool execution blocks for UI display**
+          ...(allToolResults.length > 0 && {
+            toolExecutionBlock: {
+              type: 'tool_execution_block',
+              tools: allToolResults.map((result, index) => ({
+                id: `tool-${index}`,
+                name: result.toolName,
+                arguments: result.metadata?.arguments || {},
+                success: result.success,
+                result: result.result,
+                error: result.error,
+                executionTime: result.executionTime || 'N/A',
+                summary: this.generateToolSummary(result.toolName, result)
+              }))
+            }
+          }),
           // Token validation metadata for UI display
           tokenValidation: tokenValidation ? {
             finalTokens: tokenValidation.finalTokens,
@@ -850,6 +930,31 @@ export class ClaraAgentService {
         // Execute tools
         toolResults = await claraToolService.executeToolCalls(toolCalls, currentProviderId);
 
+        // **NEW: Create structured tool execution block for UI**
+        if (onContentChunk) {
+          // Send tool execution block data as structured content
+          const toolExecutionBlock = {
+            type: 'tool_execution_block',
+            tools: toolCalls.map((toolCall) => {
+              const result = toolResults.find(r => r.toolName === toolCall.function?.name);
+              return {
+                id: toolCall.id,
+                name: toolCall.function?.name || 'Unknown Tool',
+                arguments: toolCall.function?.arguments ? JSON.parse(toolCall.function.arguments || '{}') : {},
+                success: result?.success || false,
+                result: result?.result,
+                error: result?.error,
+                executionTime: result?.executionTime || 'N/A',
+                summary: this.generateToolSummary(toolCall.function?.name || '', result)
+              };
+            })
+          };
+          
+          // Send as special structured content
+          onContentChunk(`\n\n__TOOL_EXECUTION_BLOCK__${JSON.stringify(toolExecutionBlock)}__TOOL_EXECUTION_BLOCK__\n\n`);
+          console.log(`📦 Sent tool execution block via streaming for ${toolCalls.length} tools`);
+        }
+
         // Check for failures and provide recovery guidance
         const failedTools = toolResults.filter(r => !r.success);
         if (failedTools.length > 0 && onContentChunk) {
@@ -866,35 +971,31 @@ export class ClaraAgentService {
           const failCount = toolResults.filter(r => !r.success).length;
           
           if (failCount === 0) {
-            onContentChunk(`[✔] All tools completed successfully\n\n`);
+            onContentChunk(`✅ **All tools completed successfully**\n\n`);
           } else {
-            onContentChunk(`[⚠] Tools completed: ${successCount} successful, ${failCount} failed\n`);
-            onContentChunk(`[🔄] Failure analysis complete - ready for alternative approaches\n\n`);
+            onContentChunk(`⚠️ **Tools completed**: ${successCount} successful, ${failCount} failed\n\n`);
           }
-
-          // Stream each tool result with enhanced feedback
-          toolResults.forEach((result) => {
-            const status = result.success ? '✅' : '❌';
-            let msg = `[${status}] ${result.toolName}`;
-            
-            if (result.success && result.result !== undefined && result.result !== null) {
-              if (typeof result.result === 'string') {
-                msg += `: ${result.result.substring(0, 100)}${result.result.length > 100 ? '...' : ''}\n`;
-              } else {
-                try {
-                  const resultStr = JSON.stringify(result.result, null, 2);
-                  msg += `: ${resultStr.substring(0, 100)}${resultStr.length > 100 ? '...' : ''}\n`;
-                } catch {
-                  msg += `: [Complex object returned]\n`;
-                }
-              }
-            } else if (!result.success && result.error) {
-              msg += ` FAILED: ${result.error}\n`;
-            } else {
-              msg += `: No result returned\n`;
-            }
-            onContentChunk(msg);
-          });
+        }
+      } else {
+        // **NEW: Handle case when LLM completes without tool calls**
+        console.log(`🎯 LLM completed naturally without tool calls (Step ${stepNumber})`);
+        
+        // Store execution results in localStorage (replaces previous)
+        try {
+          const executionResult = {
+            timestamp: new Date().toISOString(),
+            stepNumber: stepNumber,
+            modelId: modelId,
+            naturalCompletion: true,
+            messages: messages,
+            response: response,
+            responseLength: response.length,
+            hasToolCalls: false
+          };
+          localStorage.setItem('Current Execution Results', JSON.stringify(executionResult, null, 2));
+          console.log(`💾 Stored natural completion in localStorage: Current Execution Results`);
+        } catch (error) {
+          console.error('Failed to store execution results in localStorage:', error);
         }
       }
 

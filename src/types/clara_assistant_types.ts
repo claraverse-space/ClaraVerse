@@ -230,6 +230,21 @@ export interface ClaraMessageMetadata {
   
   /** Execution ID for tracking tool executions */
   executionId?: string;
+  
+  /** Tool execution block data for agent mode */
+  toolExecutionBlock?: {
+    type: 'tool_execution_block';
+    tools: Array<{
+      id: string;
+      name: string;
+      arguments: Record<string, any>;
+      success: boolean;
+      result?: any;
+      error?: string;
+      executionTime?: string;
+      summary: string;
+    }>;
+  };
 }
 
 // ================================
