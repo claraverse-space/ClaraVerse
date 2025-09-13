@@ -1268,7 +1268,7 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
               )}
 
               {/* Connection Status */}
-              <div className="glassmorphic p-4 rounded-xl border border-white/20 dark:border-gray-700/30 bg-gradient-to-br from-white/20 to-white/5 dark:from-gray-800/20 dark:to-gray-900/5">
+              {/* <div className="glassmorphic p-4 rounded-xl border border-white/20 dark:border-gray-700/30 bg-gradient-to-br from-white/20 to-white/5 dark:from-gray-800/20 dark:to-gray-900/5">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                   <Database className="w-4 h-4 text-sakura-500" />
                   Database Status
@@ -1299,7 +1299,7 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
                     </div>
                   </div>
                 )}
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

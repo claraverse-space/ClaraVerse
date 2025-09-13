@@ -1151,6 +1151,8 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     </div>
                   </button>
                 </div>
+                {/* Hidden: Workflow Templates button - moved to community section, mini store is used instead */}
+                {/* 
                 <div className="flex-1 flex justify-center items-center">
                   <div className="relative group">
                     <div className="absolute -inset-2 bg-gradient-to-r from-purple-600 via-blue-500 to-pink-500 rounded-full blur opacity-40 group-hover:opacity-75 transition duration-200"></div>
@@ -1173,6 +1175,8 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     )}
                   </div>
                 </div>
+                */}
+                <div className="flex-1"></div>
                 <div className="flex items-center gap-2">
                   {n8nUrl ? (
                     <div className="flex items-center gap-2">
