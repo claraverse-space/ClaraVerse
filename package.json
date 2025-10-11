@@ -384,7 +384,6 @@
     },
     "linux": {
       "target": [
-        "deb",
         "AppImage"
       ],
       "category": "Development",
