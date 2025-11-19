@@ -32,8 +32,10 @@ Quick setup guide to get ClaraVerse running.
 
 ### Step 1: Download
 Get the latest release from:
+
+The website: [https://claraverse.space](https://claraverse.space)
 ```
-https://github.com/badboysm890/claraverse/releases
+https://github.com/claraverse-space/ClaraVerse/releases
 ```
 
 Choose your platform:
