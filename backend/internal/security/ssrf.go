@@ -45,18 +45,62 @@ func init() {
 	}
 }
 
-// IsPrivateIP checks if an IP address is in a private/internal range
+// IsPrivateIP checks if an IP address is in a private/internal range. It
+// also decodes an IPv6 transition address (NAT64, 6to4, or Teredo) and
+// checks the embedded IPv4 destination: parsedCIDRs is a plain
+// containment table, so a transition-encoded address that carries a
+// blocked IPv4 inside it does not match any entry by byte pattern alone.
 func IsPrivateIP(ip net.IP) bool {
 	if ip == nil {
 		return true // Treat nil as blocked for safety
 	}
 
+	if isBlockedByCIDR(ip) {
+		return true
+	}
+	if embedded := embeddedTransitionIPv4(ip); embedded != nil {
+		return isBlockedByCIDR(embedded)
+	}
+	return false
+}
+
+func isBlockedByCIDR(ip net.IP) bool {
 	for _, network := range parsedCIDRs {
 		if network.Contains(ip) {
 			return true
 		}
 	}
 	return false
+}
+
+// embeddedTransitionIPv4 returns the IPv4 address carried by an IPv6
+// transition address: NAT64 64:ff9b::/96 (RFC 6052), 6to4 2002::/16 (RFC
+// 3056), or Teredo 2001:0000::/32 (RFC 4380, client IPv4 obfuscated by
+// XOR with 0xffffffff). Returns nil for a native IPv4 or IPv4-mapped
+// address (already normalized by To4()) or any other IPv6 address.
+func embeddedTransitionIPv4(ip net.IP) net.IP {
+	v6 := ip.To16()
+	if v6 == nil || ip.To4() != nil {
+		return nil
+	}
+	switch {
+	case v6[0] == 0x00 && v6[1] == 0x64 && v6[2] == 0xff && v6[3] == 0x9b && isAllZero(v6[4:12]):
+		return net.IPv4(v6[12], v6[13], v6[14], v6[15])
+	case v6[0] == 0x20 && v6[1] == 0x02:
+		return net.IPv4(v6[2], v6[3], v6[4], v6[5])
+	case v6[0] == 0x20 && v6[1] == 0x01 && v6[2] == 0x00 && v6[3] == 0x00:
+		return net.IPv4(v6[12]^0xff, v6[13]^0xff, v6[14]^0xff, v6[15]^0xff)
+	}
+	return nil
+}
+
+func isAllZero(b []byte) bool {
+	for _, c := range b {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // IsBlockedHostname checks if a hostname is in the blocklist
