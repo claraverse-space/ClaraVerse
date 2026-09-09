@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -240,62 +239,14 @@ func validateDownloadURL(urlStr string) (*url.URL, error) {
 		return nil, fmt.Errorf("URL must have a host")
 	}
 
-	// Block internal/private IP ranges
-	host := parsedURL.Hostname()
-
-	// Check for localhost variants
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
-		return nil, fmt.Errorf("localhost URLs are not allowed")
-	}
-
-	// Check for IP address
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if isPrivateIP(ip) {
-			return nil, fmt.Errorf("private IP addresses are not allowed")
-		}
-	}
-
-	// Block cloud metadata endpoints
-	blockedHosts := []string{
-		"169.254.169.254",      // AWS metadata
-		"metadata.google.internal",
-		"metadata.google.com",
-		"169.254.169.254.xip.io",
-	}
-	for _, blocked := range blockedHosts {
-		if host == blocked {
-			return nil, fmt.Errorf("access to cloud metadata endpoints is blocked")
-		}
+	// Block internal/private IP ranges and cloud metadata endpoints, resolving
+	// the hostname and rejecting a NAT64/6to4/Teredo-encoded destination the
+	// same way the security package's shared SSRF guard does.
+	if err := security.ValidateURLForSSRF(urlStr); err != nil {
+		return nil, err
 	}
 
 	return parsedURL, nil
-}
-
-// isPrivateIP checks if an IP is in a private range
-func isPrivateIP(ip net.IP) bool {
-	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"127.0.0.0/8",
-		"169.254.0.0/16",
-		"::1/128",
-		"fc00::/7",
-		"fe80::/10",
-	}
-
-	for _, cidr := range privateRanges {
-		_, subnet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if subnet.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // getMaxSize returns the max allowed size for a content type
