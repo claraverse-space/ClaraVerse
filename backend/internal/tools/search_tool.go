@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -142,7 +143,7 @@ func NewSearchTool() *Tool {
 	return &Tool{
 		Name:        "search_web",
 		DisplayName: "Search Web",
-		Description: "Search the web using SearXNG for current information, news, articles, or any topic",
+		Description: "Search the web for current information, news, articles, or any topic",
 		Icon:        "Search",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -154,20 +155,38 @@ func NewSearchTool() *Tool {
 			},
 			"required": []string{"query"},
 		},
-		Execute:  executeSearchWeb,
-		Source:   ToolSourceBuiltin,
-		Category: "data_sources",
-		Keywords: []string{"search", "find", "lookup", "research", "web", "internet", "news", "articles", "information", "query", "google"},
+		Execute:        executeSearchWeb,
+		ExecuteContext: executeSearchWebContext,
+		Source:         ToolSourceBuiltin,
+		Category:       "data_sources",
+		Keywords:       []string{"search", "find", "lookup", "research", "web", "internet", "news", "articles", "information", "query", "google"},
 	}
 }
 
 func executeSearchWeb(args map[string]interface{}) (string, error) {
+	return executeSearchWebContext(context.Background(), args)
+}
+
+func executeSearchWebContext(ctx context.Context, args map[string]interface{}) (string, error) {
 	query, ok := args["query"].(string)
 	if !ok {
 		return "", fmt.Errorf("query parameter is required and must be a string")
 	}
 
 	query = strings.TrimSpace(query)
+	if query == "" {
+		return "", fmt.Errorf("query parameter must not be empty")
+	}
+	// Choose before consulting the SearXNG cache. An explicit Parallel failure
+	// must never fall back to a different service or a cached SearXNG result.
+	switch provider := strings.ToLower(strings.TrimSpace(os.Getenv("SEARCH_PROVIDER"))); provider {
+	case "", "searxng":
+		// Preserve the existing default, configured instances and cache behavior.
+	case "parallel":
+		return executeParallelSearch(ctx, query, args)
+	default:
+		return "", fmt.Errorf("unknown SEARCH_PROVIDER %q: use searxng or parallel", provider)
+	}
 	log.Printf("🔍 [SEARCH-WEB] Starting search for: '%s'", query)
 
 	// Check cache first (5 minute TTL)

@@ -20,6 +20,7 @@ import (
 	"claraverse/internal/models"
 	"claraverse/internal/tools"
 
+	"github.com/google/uuid"
 	cache "github.com/patrickmn/go-cache"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -4196,6 +4197,10 @@ func (s *ChatService) ChatCompletionWithTools(ctx context.Context, userID, conve
 // including generated images for channel integrations
 // conversationID is required for tools that need to look up resources (e.g., edit_image needs image registry)
 func (s *ChatService) ChatCompletionWithToolsEx(ctx context.Context, userID, conversationID, modelID string, messages []map[string]interface{}, availableTools []map[string]interface{}, maxIterations int) (*ChannelToolResult, error) {
+	// A standalone agent run still needs one identity across tool iterations.
+	if conversationID == "" {
+		conversationID = uuid.NewString()
+	}
 	if maxIterations <= 0 {
 		maxIterations = 10 // Default max iterations to prevent infinite loops
 	}
@@ -4471,7 +4476,7 @@ func (s *ChatService) executeToolForChannelEx(ctx context.Context, userID, conve
 		}
 	} else {
 		// Built-in tool — execute locally
-		result, err = s.toolRegistry.Execute(toolName, args)
+		result, err = s.toolRegistry.ExecuteContext(ctx, toolName, args)
 		if err != nil {
 			log.Printf("❌ [CHANNEL-TOOLS] Tool execution failed for %s: %v", toolName, err)
 			return fmt.Sprintf("Error: %v", err), nil

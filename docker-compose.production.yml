@@ -37,6 +37,7 @@ services:
       - DATABASE_URL=mysql://claraverse:claraverse@mysql:3306/claraverse?parseTime=true
       - MONGODB_URI=mongodb://mongodb:27017/claraverse
       - REDIS_URL=redis://redis:6379
+      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-searxng}
       - SEARXNG_URL=http://searxng:8080
       - SEARXNG_URLS=http://searxng:8080
       # RAG (Qdrant vector DB + FastEmbed sidecar). Both are optional

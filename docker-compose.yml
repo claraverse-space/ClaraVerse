@@ -143,6 +143,7 @@ services:
       # CORS
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       # SearXNG integration (supports multiple URLs for load balancing)
+      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-searxng}
       - SEARXNG_URLS=${SEARXNG_URLS:-http://searxng:8080}
       - SEARXNG_URL=${SEARXNG_URLS:-http://searxng:8080}
       # E2B service integration

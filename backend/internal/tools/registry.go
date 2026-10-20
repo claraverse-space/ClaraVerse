@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -16,20 +17,24 @@ const (
 
 // Tool represents a callable tool with its metadata and execution function
 type Tool struct {
-	Name        string
-	DisplayName string // User-friendly name (e.g., "Search Web", "Calculate Math")
-	Description string
-	Parameters  map[string]interface{}
-	Icon        string // Lucide React icon name (e.g., "Calculator", "Search", "Clock")
-	Execute     ExecuteFunc
-	Source      ToolSource // "builtin" or "mcp_local"
-	UserID      string     // For user-specific MCP tools (empty for built-in)
-	Category    string     // Tool category: data_sources, computation, time, output, integration
-	Keywords    []string   // Keywords for smart recommendations
+	Name           string
+	DisplayName    string // User-friendly name (e.g., "Search Web", "Calculate Math")
+	Description    string
+	Parameters     map[string]interface{}
+	Icon           string // Lucide React icon name (e.g., "Calculator", "Search", "Clock")
+	Execute        ExecuteFunc
+	ExecuteContext ContextExecuteFunc // Optional cancellation-aware implementation
+	Source         ToolSource         // "builtin" or "mcp_local"
+	UserID         string             // For user-specific MCP tools (empty for built-in)
+	Category       string             // Tool category: data_sources, computation, time, output, integration
+	Keywords       []string           // Keywords for smart recommendations
 }
 
 // ExecuteFunc is the function signature for tool execution
 type ExecuteFunc func(args map[string]interface{}) (string, error)
+
+// ContextExecuteFunc supports cancellation for tools that perform network I/O.
+type ContextExecuteFunc func(context.Context, map[string]interface{}) (string, error)
 
 // Registry manages all available tools
 type Registry struct {
@@ -106,9 +111,17 @@ func (r *Registry) List() []map[string]interface{} {
 
 // Execute runs a tool by name with given arguments
 func (r *Registry) Execute(name string, args map[string]interface{}) (string, error) {
+	return r.ExecuteContext(context.Background(), name, args)
+}
+
+// ExecuteContext runs a tool with cancellation when the implementation supports it.
+func (r *Registry) ExecuteContext(ctx context.Context, name string, args map[string]interface{}) (string, error) {
 	tool, exists := r.Get(name)
 	if !exists {
 		return "", fmt.Errorf("tool %s not found", name)
+	}
+	if tool.ExecuteContext != nil {
+		return tool.ExecuteContext(ctx, args)
 	}
 	return tool.Execute(args)
 }
